@@ -4,8 +4,10 @@ import aiohttp_jinja2
 import aiohttp_session
 import jinja2
 from aiohttp import web
+from aiohttp.web_urldispatcher import StaticResource
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
+from .api.views import routes as api_routes
 from .metricq import Configurator
 from .settings import Settings
 from .views import index
@@ -50,4 +52,8 @@ async def create_app(loop):
     )
 
     app.router.add_get("/", index, name="index")
+    app.router.add_routes(api_routes)
+
+    app.logger.setLevel("DEBUG")
+
     return app
