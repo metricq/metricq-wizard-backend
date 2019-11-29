@@ -6,6 +6,7 @@ import jinja2
 from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
+import aiohttp_cors
 
 from .api.views import routes as api_routes
 from .metricq import Configurator
@@ -51,8 +52,21 @@ async def create_app(loop):
         app, EncryptedCookieStorage(settings.auth_key, cookie_name=settings.cookie_name)
     )
 
+    cors = aiohttp_cors.setup(
+        app,
+        defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True, expose_headers="*", allow_headers="*"
+            )
+        },
+    )
+
     app.router.add_get("/", index, name="index")
     app.router.add_routes(api_routes)
+
+    for route in list(app.router.routes()):
+        if not isinstance(route.resource, StaticResource):  # <<< WORKAROUND
+            cors.add(route)
 
     app.logger.setLevel("DEBUG")
 
