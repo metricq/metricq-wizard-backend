@@ -2,27 +2,22 @@ from pathlib import Path
 
 import aiohttp_jinja2
 import aiohttp_session
-import asyncpg
 import jinja2
 from aiohttp import web
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
-from .db import prepare_database
 from .settings import Settings
-from .views import index, message_data, messages
+from .views import index
 
 THIS_DIR = Path(__file__).parent
 
 
 async def startup(app: web.Application):
     settings: Settings = app["settings"]
-    await prepare_database(settings, False)
-    # app['pg'] = await asyncpg.create_pool(dsn=settings.pg_dsn, min_size=2)
     return
 
 
 async def cleanup(app: web.Application):
-    # await app['pg'].close()
     return
 
 
@@ -42,7 +37,4 @@ async def create_app(loop):
     )
 
     app.router.add_get("/", index, name="index")
-    app.router.add_route("*", "/messages", messages, name="messages")
-    app.router.add_get("/messages/data", message_data, name="message-data")
-    print("Starting app")
     return app
