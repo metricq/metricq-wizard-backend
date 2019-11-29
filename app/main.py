@@ -6,6 +6,7 @@ import jinja2
 from aiohttp import web
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
+from .metricq import Configurator
 from .settings import Settings
 from .views import index
 
@@ -14,10 +15,22 @@ THIS_DIR = Path(__file__).parent
 
 async def startup(app: web.Application):
     settings: Settings = app["settings"]
+    client = Configurator(
+        settings.token,
+        settings.amqp_server,
+        settings.couchdb_url,
+        settings.couchdb_user,
+        settings.couchdb_password,
+        event_loop=app.loop,
+    )
+    app["metricq_client"] = client
+    await client.connect()
     return
 
 
 async def cleanup(app: web.Application):
+    client: Configurator = app["metricq_client"]
+    await client.stop()
     return
 
 

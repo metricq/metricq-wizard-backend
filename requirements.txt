@@ -2,3 +2,4 @@ aiohttp==3.6.2
 aiohttp-jinja2==1.2.0
 aiohttp-session[secure]==2.8.0
 pydantic==1.0
+metricq
