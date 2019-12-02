@@ -102,7 +102,7 @@ class Configurator(ManagementAgent):
 
         return
 
-    async def update_metric_datbase_config(
+    async def update_metric_database_config(
         self, metric_database_configuration: MetricDatabaseConfiguration
     ):
         metadata = await self.get_metrics(
