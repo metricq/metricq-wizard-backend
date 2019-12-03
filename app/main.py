@@ -1,3 +1,23 @@
+# metricq-wizard
+# Copyright (C) 2019 ZIH, Technische Universitaet Dresden, Federal Republic of Germany
+#
+# All rights reserved.
+#
+# This file is part of metricq-wizard.
+#
+# metricq-wizard is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# metricq-wizard is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+
 from pathlib import Path
 
 import aiohttp_jinja2
@@ -64,9 +84,13 @@ async def create_app(loop):
     app.router.add_get("/", index, name="index")
     app.router.add_routes(api_routes)
 
+    # from https://github.com/aio-libs/aiohttp-cors/issues/155#issue-297282191
     for route in list(app.router.routes()):
         if not isinstance(route.resource, StaticResource):  # <<< WORKAROUND
             cors.add(route)
+    # end
+
+    setup_swagger(app)
 
     app.logger.setLevel("DEBUG")
 

@@ -1,4 +1,4 @@
-aiohttp demo app
+metricq-wizard-backend
 ================
 
 Your new web app is ready to go!
