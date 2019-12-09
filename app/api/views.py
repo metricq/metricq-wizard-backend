@@ -65,8 +65,8 @@ async def post_metric_list(request: Request):
 
 @routes.get("/api/databases")
 async def get_db_list(request: Request):
-    client: Configurator = request.app["metricq_client"]
-    config_dict = await client.get_configs()
+    configurator: Configurator = request.app["metricq_client"]
+    config_dict = await configurator.get_configs()
     db_list = []
     for config_id, config in config_dict.items():
         if config_id.startswith("db-"):
@@ -102,3 +102,115 @@ async def get_db_list(request: Request):
 async def post_metric_list(request: Request):
     logger.debug(f"Reconfiguring {request.match_info['database_id']}")
     return Response(text="Hello, {}".format(request.match_info["database_id"]))
+
+
+@routes.get("/api/sources")
+async def get_source_list(request: Request):
+    """
+
+    :param request:
+    :return:
+    ---
+    description: Get list of configured sources
+    tags:
+    - Sources
+    produces:
+    - application/json
+    """
+    configurator: Configurator = request.app["metricq_client"]
+    config_dict = await configurator.get_configs()
+    source_list = []
+    for config_id, config in config_dict.items():
+        if config_id.startswith("source-"):
+            try:
+                source_list.append({"id": config_id})
+            except KeyError:
+                logger.error(f"Config of source {config_id} is incorrect! Missing key")
+
+    return Response(text=json.dumps(source_list), content_type="application/json")
+
+
+@routes.get("/api/source/{source_id}/get_available_metrics/input_form")
+async def get_available_metrics_input_form(request: Request):
+    """
+
+    :param request:
+    :return:
+    ---
+    description: Get list of configured sources
+    tags:
+    - Sources
+    parameters:
+    - in: path
+      name: source_id
+      required: true
+      description: Numeric ID of the user to get
+    produces:
+    - application/json
+    """
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(source_plugin.input_form_get_available_metrics()),
+        content_type="application/json",
+    )
+
+
+@routes.post("/api/source/{source_id}/get_available_metrics")
+async def get_available_metrics(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    data = await request.json()
+    source_metric_list_configuration = source_plugin.input_model_get_available_metrics()(
+        **data
+    )
+
+    metric_list = await source_plugin.get_available_metrics(
+        source_metric_list_configuration
+    )
+
+    return Response(text=json.dumps(metric_list), content_type="application/json")
+
+
+@routes.get("/api/source/{source_id}/create_new_metric/input_form")
+async def create_new_metric_input_form(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(source_plugin.input_form_create_new_metric()),
+        content_type="application/json",
+    )
+
+
+@routes.post("/api/source/{source_id}/create_new_metric")
+async def create_new_metric(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    data = await request.json()
+    source_metric_configuration = source_plugin.input_model_create_new_metric()(**data)
+
+    config = await configurator.get_configs(selector=source_id)
+    if not config or source_id not in config:
+        # TODO return 404
+        pass
+
+    new_config = await source_plugin.create_new_metric(
+        source_metric_configuration, config[source_id]
+    )
+
+    logger.debug(new_config)
+
+    await configurator.set_config(source_id, new_config)
+
+    return Response(
+        text=source_metric_configuration.json(by_alias=True),
+        content_type="application/json",
+    )

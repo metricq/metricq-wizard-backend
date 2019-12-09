@@ -27,6 +27,7 @@ from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 import aiohttp_cors
+from aiohttp_swagger import setup_swagger
 
 from .api.views import routes as api_routes
 from .metricq import Configurator

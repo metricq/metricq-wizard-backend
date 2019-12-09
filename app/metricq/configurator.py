@@ -23,13 +23,14 @@ import json
 import logging
 import os
 from asyncio import Lock
-from typing import Union, Sequence
+from typing import Union, Sequence, Dict
 
 from aiohttp import ClientResponseError
 from metricq import ManagementAgent
 from metricq.logging import get_logger
 
 from app.api.models import MetricDatabaseConfiguration
+from app.metricq.source_plugin import SourcePlugin
 
 logger = get_logger()
 
@@ -59,6 +60,7 @@ class Configurator(ManagementAgent):
             couchdb_password,
             event_loop=event_loop,
         )
+        self._loaded_plugins: Dict[str, SourcePlugin] = {}
         self._config_locks = {}
 
     async def fetch_metadata(self, metric_ids):
@@ -175,3 +177,28 @@ class Configurator(ManagementAgent):
         for key, value in config.items():
             if not key.startswith("_"):
                 doc[key] = value
+
+    async def get_source_plugin(self, source_id) -> SourcePlugin:
+        config = await self.get_configs(source_id)
+        # TODO fix type extraction
+        source_type = "http"
+
+        if source_type not in self._loaded_plugins:
+            full_modul_name = "metricq_wizard_plugin_{}".format(source_type)
+            if importlib.util.find_spec(full_modul_name):
+                plugin_module = importlib.import_module(full_modul_name)
+                self._loaded_plugins[source_type] = plugin_module.get_plugin()
+            else:
+                logger.error(
+                    f"Plugin {full_modul_name} for source {source_id} not found."
+                )
+
+        if source_type in self._loaded_plugins:
+            return self._loaded_plugins[source_type]
+
+        raise
+
+    async def reload_loaded_plugins(self):
+        for plugin in self._loaded_plugins:
+            logger.debug(f"Reloading {plugin}")
+            importlib.reload(self._loaded_plugins[plugin])
