@@ -91,7 +91,7 @@ async def create_app(loop):
             cors.add(route)
     # end
 
-    setup_swagger(app)
+    setup_swagger(app, ui_version=3, swagger_template_path="api_doc/swagger_base.yaml")
 
     app.logger.setLevel("DEBUG")
 

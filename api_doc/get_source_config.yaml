@@ -1,0 +1,10 @@
+description: Get configuration for source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+produces:
+- application/json

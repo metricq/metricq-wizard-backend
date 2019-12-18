@@ -24,6 +24,7 @@ import metricq
 from aiohttp.web import RouteTableDef
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
+from aiohttp_swagger import swagger_path
 
 from ..metricq import Configurator
 from .models import MetricDatabaseConfiguration
@@ -104,19 +105,9 @@ async def post_metric_list(request: Request):
     return Response(text="Hello, {}".format(request.match_info["database_id"]))
 
 
+@swagger_path("api_doc/get_source_list.yaml")
 @routes.get("/api/sources")
 async def get_source_list(request: Request):
-    """
-
-    :param request:
-    :return:
-    ---
-    description: Get list of configured sources
-    tags:
-    - Sources
-    produces:
-    - application/json
-    """
     configurator: Configurator = request.app["metricq_client"]
     config_dict = await configurator.get_configs()
     source_list = []
@@ -130,21 +121,95 @@ async def get_source_list(request: Request):
     return Response(text=json.dumps(source_list), content_type="application/json")
 
 
+@swagger_path("api_doc/get_source_config_items.yaml")
+@routes.get("/api/source/{source_id}/config_items")
+async def get_source_config_items(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(source_plugin.get_configuration_items()),
+        content_type="application/json",
+    )
+
+
+@swagger_path("api_doc/get_source_metrics_for_config_item.yaml")
+@routes.get("/api/source/{source_id}/config_item/{config_item_id}/metrics")
+async def get_source_metrics_for_config_item(request: Request):
+    source_id = request.match_info["source_id"]
+    config_item_id = request.match_info["config_item_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    metric_list = await source_plugin.get_metrics_for_config_item(config_item_id)
+
+    return Response(text=json.dumps(metric_list), content_type="application/json")
+
+
+@swagger_path("api_doc/add_source_metrics_for_config_item.yaml")
+@routes.post("/api/source/{source_id}/config_item/{config_item_id}/metrics")
+async def add_source_metrics_for_config_item(request: Request):
+    pass
+
+
+@routes.get("/api/source/{source_id}/config_items/input_form")
+async def get_source_add_config_item_input_form(request: Request):
+    pass
+
+
+@swagger_path("api_doc/add_source_config_item.yaml")
+@routes.post("/api/source/{source_id}/config_items")
+async def add_source_config_item(request: Request):
+    pass
+
+
+@routes.get("/api/source/{source_id}/config_item/{config_item_id}/input_form")
+async def get_source_edit_config_item_input_form(request: Request):
+    pass
+
+
+@swagger_path("api_doc/get_source_config_item.yaml")
+@routes.get("/api/source/{source_id}/config_item/{config_item_id}")
+async def get_source_config_item(request: Request):
+    pass
+
+
+@swagger_path("api_doc/update_source_config_item.yaml")
+@routes.post("/api/source/{source_id}/config_item/{config_item_id}")
+async def update_source_config_item(request: Request):
+    pass
+
+
+@routes.get("/api/source/{source_id}/input_form")
+async def get_source_edit_config_input_form(request: Request):
+    pass
+
+
+@swagger_path("api_doc/get_source_config.yaml")
+@routes.get("/api/source/{source_id}")
+async def get_source_config(request: Request):
+    pass
+
+
+@swagger_path("api_doc/update_source_config.yaml")
+@routes.post("/api/source/{source_id}")
+async def update_source_config(request: Request):
+    pass
+
+
 @routes.get("/api/source/{source_id}/get_available_metrics/input_form")
 async def get_available_metrics_input_form(request: Request):
     """
-
-    :param request:
-    :return:
     ---
-    description: Get list of configured sources
+    description: Get list of available metrics for a configuration item
     tags:
     - Sources
     parameters:
     - in: path
       name: source_id
       required: true
-      description: Numeric ID of the user to get
+      description: id of the source
     produces:
     - application/json
     """
@@ -156,24 +221,6 @@ async def get_available_metrics_input_form(request: Request):
         text=json.dumps(source_plugin.input_form_get_available_metrics()),
         content_type="application/json",
     )
-
-
-@routes.post("/api/source/{source_id}/get_available_metrics")
-async def get_available_metrics(request: Request):
-    source_id = request.match_info["source_id"]
-    configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
-
-    data = await request.json()
-    source_metric_list_configuration = source_plugin.input_model_get_available_metrics()(
-        **data
-    )
-
-    metric_list = await source_plugin.get_available_metrics(
-        source_metric_list_configuration
-    )
-
-    return Response(text=json.dumps(metric_list), content_type="application/json")
 
 
 @routes.get("/api/source/{source_id}/create_new_metric/input_form")

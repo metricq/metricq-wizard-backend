@@ -1,0 +1,13 @@
+description: Get configuration items for a source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+responses:
+  '200':
+    description: a pet to be returned
+produces:
+- application/json

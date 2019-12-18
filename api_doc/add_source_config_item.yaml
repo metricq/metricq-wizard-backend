@@ -1,0 +1,16 @@
+description: Add a new configuration item for selected source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+requestBody:
+  description: user to add to the system
+  content:
+    'application/json':
+      schema:
+        $ref: '#/components/schemas/User'
+produces:
+- application/json

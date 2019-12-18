@@ -1,0 +1,20 @@
+description: Update settings of configuration item of the source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+- in: path
+  name: config_item_id
+  required: true
+  description: id of the configuration item
+requestBody:
+  description: user to add to the system
+  content:
+    'application/json':
+      schema:
+        $ref: '#/components/schemas/User'
+produces:
+- application/json
