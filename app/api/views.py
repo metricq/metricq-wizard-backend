@@ -173,7 +173,14 @@ async def add_source_metrics_for_config_item(request: Request):
 
 @routes.get("/api/source/{source_id}/config_items/input_form")
 async def get_source_add_config_item_input_form(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(source_plugin.input_form_add_config_item()),
+        content_type="application/json",
+    )
 
 
 @swagger_path("api_doc/add_source_config_item.yaml")
@@ -184,7 +191,14 @@ async def add_source_config_item(request: Request):
 
 @routes.get("/api/source/{source_id}/config_item/{config_item_id}/input_form")
 async def get_source_edit_config_item_input_form(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(source_plugin.input_form_edit_config_item()),
+        content_type="application/json",
+    )
 
 
 @swagger_path("api_doc/get_source_config_item.yaml")
