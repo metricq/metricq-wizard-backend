@@ -259,13 +259,31 @@ async def get_source_edit_global_config_input_form(request: Request):
 @swagger_path("api_doc/get_source_config.yaml")
 @routes.get("/api/source/{source_id}")
 async def get_source_global_config(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    source_global_config = await source_plugin.get_global_config()
+
+    return Response(
+        text=json.dumps(source_global_config), content_type="application/json"
+    )
 
 
 @swagger_path("api_doc/update_source_config.yaml")
 @routes.post("/api/source/{source_id}")
 async def update_source_global_config(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    request_data = await request.json()
+
+    source_global_config = await source_plugin.update_global_config(request_data)
+
+    return Response(
+        text=json.dumps(source_global_config), content_type="application/json"
+    )
 
 
 @swagger_path("api_doc/save_source_config.yaml")

@@ -6,5 +6,12 @@ parameters:
   name: source_id
   required: true
   description: id of the source
+responses:
+  '200':
+    description: source global configuration
+    content:
+      application/json:
+        schema:
+          tyep: object
 produces:
 - application/json
