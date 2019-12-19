@@ -180,7 +180,7 @@ class Configurator(ManagementAgent):
                 doc[key] = value
 
     async def get_source_plugin(self, source_id) -> SourcePlugin:
-        config = (await self.get_configs(source_id))[source_id]
+        config = await self.couchdb_db_config[source_id]
         # TODO fix type extraction
         source_type = "http"
 
