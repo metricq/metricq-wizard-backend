@@ -262,43 +262,6 @@ async def save_source_config(request: Request):
     )
 
 
-@routes.get("/api/source/{source_id}/get_available_metrics/input_form")
-async def get_available_metrics_input_form(request: Request):
-    """
-    ---
-    description: Get list of available metrics for a configuration item
-    tags:
-    - Sources
-    parameters:
-    - in: path
-      name: source_id
-      required: true
-      description: id of the source
-    produces:
-    - application/json
-    """
-    source_id = request.match_info["source_id"]
-    configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
-
-    return Response(
-        text=json.dumps(source_plugin.input_form_get_available_metrics()),
-        content_type="application/json",
-    )
-
-
-@routes.get("/api/source/{source_id}/create_new_metric/input_form")
-async def create_new_metric_input_form(request: Request):
-    source_id = request.match_info["source_id"]
-    configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
-
-    return Response(
-        text=json.dumps(source_plugin.input_form_create_new_metric()),
-        content_type="application/json",
-    )
-
-
 @routes.post("/api/source/{source_id}/create_new_metric")
 async def create_new_metric(request: Request):
     source_id = request.match_info["source_id"]
