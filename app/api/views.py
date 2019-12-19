@@ -131,7 +131,12 @@ async def get_source_config_items(request: Request):
     source_plugin = await configurator.get_source_plugin(source_id=source_id)
 
     return Response(
-        text=json.dumps(source_plugin.get_configuration_items()),
+        text=json.dumps(
+            [
+                config_item.dict()
+                for config_item in source_plugin.get_configuration_items()
+            ]
+        ),
         content_type="application/json",
     )
 

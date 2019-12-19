@@ -37,9 +37,15 @@ class AvailableMetricItem(pydantic.BaseModel):
     metric_suffix: str = ""
 
 
+class ConfigItem(pydantic.BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
 class SourcePlugin(ABC):
     @abstractmethod
-    def get_configuration_items(self) -> Sequence[Dict]:
+    def get_configuration_items(self) -> Sequence[ConfigItem]:
         raise NotImplementedError
 
     @abstractmethod
@@ -59,7 +65,7 @@ class SourcePlugin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def add_config_item(self, config_item_id: str, data: Dict):
+    async def add_config_item(self, data: Dict) -> ConfigItem:
         raise NotImplementedError
 
     @abstractmethod

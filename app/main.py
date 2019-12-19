@@ -31,7 +31,7 @@ from aiohttp_swagger import setup_swagger
 
 from .api.views import routes as api_routes
 from .metricq import Configurator
-from .metricq.source_plugin import AddMetricItem, AvailableMetricItem
+from .metricq.source_plugin import AddMetricItem, AvailableMetricItem, ConfigItem
 from .settings import Settings
 from .views import index
 
@@ -99,6 +99,7 @@ async def create_app(loop):
         definitions={
             "AddMetricItem": AddMetricItem.schema(),
             "AvailableMetricItem": AvailableMetricItem.schema(),
+            "ConfigItem": ConfigItem.schema(),
         },
     )
 
