@@ -14,7 +14,7 @@ requestBody:
         type: object
 responses:
   '200':
-    description: config items
+    description: the new config item
     content:
       application/json:
         schema:
