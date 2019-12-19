@@ -10,5 +10,12 @@ parameters:
   name: config_item_id
   required: true
   description: id of the configuration item
+responses:
+  '200':
+    description: config item config
+    content:
+      application/json:
+        schema:
+          tyep: object
 produces:
 - application/json
