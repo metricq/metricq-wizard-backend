@@ -22,12 +22,14 @@ import json
 
 import metricq
 from aiohttp.web import RouteTableDef
+from aiohttp.web_exceptions import HTTPBadRequest
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp_swagger import swagger_path
 
 from ..metricq import Configurator
 from .models import MetricDatabaseConfiguration
+from ..metricq.source_plugin import AddMetricItem
 
 routes = RouteTableDef()
 
@@ -144,13 +146,29 @@ async def get_source_metrics_for_config_item(request: Request):
 
     metric_list = await source_plugin.get_metrics_for_config_item(config_item_id)
 
-    return Response(text=json.dumps(metric_list), content_type="application/json")
+    return Response(
+        text=json.dumps([metric.dict() for metric in metric_list]),
+        content_type="application/json",
+    )
 
 
 @swagger_path("api_doc/add_source_metrics_for_config_item.yaml")
 @routes.post("/api/source/{source_id}/config_item/{config_item_id}/metrics")
 async def add_source_metrics_for_config_item(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    config_item_id = request.match_info["config_item_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    request_data = await request.json()
+    if "metrics" not in request_data:
+        raise HTTPBadRequest
+
+    await source_plugin.add_metrics_for_config_item(
+        config_item_id, [AddMetricItem(**metric) for metric in request_data["metrics"]]
+    )
+
+    return Response(text="", content_type="application/json")
 
 
 @routes.get("/api/source/{source_id}/config_items/input_form")

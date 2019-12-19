@@ -19,9 +19,22 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import Sequence, Dict, Type
+from typing import Sequence, Dict, Type, Any
 
 import pydantic
+
+
+class AddMetricItem(pydantic.BaseModel):
+    id: str
+    metric_custom_part: str
+
+
+class AvailableMetricItem(pydantic.BaseModel):
+    id: str
+    current_value: Any
+    metric_prefix: str = ""
+    metric_custom_part: str
+    metric_suffix: str = ""
 
 
 class SourcePlugin(ABC):
@@ -32,12 +45,12 @@ class SourcePlugin(ABC):
     @abstractmethod
     async def get_metrics_for_config_item(
         self, config_item_id: str
-    ) -> Sequence[Dict[str, Dict]]:
+    ) -> Sequence[AvailableMetricItem]:
         raise NotImplementedError
 
     @abstractmethod
     async def add_metrics_for_config_item(
-        self, config_item_id: str, metrics: Sequence[str]
+        self, config_item_id: str, metrics: Sequence[AddMetricItem]
     ):
         raise NotImplementedError
 

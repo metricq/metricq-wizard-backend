@@ -31,6 +31,7 @@ from aiohttp_swagger import setup_swagger
 
 from .api.views import routes as api_routes
 from .metricq import Configurator
+from .metricq.source_plugin import AddMetricItem, AvailableMetricItem
 from .settings import Settings
 from .views import index
 
@@ -91,7 +92,15 @@ async def create_app(loop):
             cors.add(route)
     # end
 
-    setup_swagger(app, ui_version=3, swagger_template_path="api_doc/swagger_base.yaml")
+    setup_swagger(
+        app,
+        ui_version=3,
+        swagger_template_path="api_doc/swagger_base.yaml",
+        definitions={
+            "AddMetricItem": AddMetricItem.schema(),
+            "AvailableMetricItem": AvailableMetricItem.schema(),
+        },
+    )
 
     app.logger.setLevel("DEBUG")
 

@@ -10,5 +10,14 @@ parameters:
   name: config_item_id
   required: true
   description: id of the configuration item
+responses:
+  '200':
+    description: list of available metrics for config item
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailableMetricItem"
 produces:
 - application/json

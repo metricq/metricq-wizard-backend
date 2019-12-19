@@ -1,14 +1,24 @@
-description: TODO Get list of available metrics for a configuration item
+description: Add given metrics to source config
 tags:
-- Sources
+  - Sources
 parameters:
-- in: path
-  name: source_id
-  required: true
-  description: id of the source
-- in: path
-  name: config_item_id
-  required: true
-  description: id of the configuration item
+  - in: path
+    name: source_id
+    required: true
+    description: id of the source
+  - in: path
+    name: config_item_id
+    required: true
+    description: id of the configuration item
+requestBody:
+  content:
+    'application/json':
+      schema:
+        type: object
+        properties:
+          metrics:
+            type: array
+            items:
+              $ref: "#/components/schemas/AddMetricItem"
 produces:
-- application/json
+  - application/json
