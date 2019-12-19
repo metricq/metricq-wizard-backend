@@ -232,7 +232,16 @@ async def get_source_config_item(request: Request):
 @swagger_path("api_doc/update_source_config_item.yaml")
 @routes.post("/api/source/{source_id}/config_item/{config_item_id}")
 async def update_source_config_item(request: Request):
-    pass
+    source_id = request.match_info["source_id"]
+    config_item_id = request.match_info["config_item_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    request_data = await request.json()
+
+    config_item = await source_plugin.update_config_item(config_item_id, request_data)
+
+    return Response(text=config_item.json(), content_type="application/json")
 
 
 @routes.get("/api/source/{source_id}/input_form")

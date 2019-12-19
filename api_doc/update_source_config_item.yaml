@@ -11,10 +11,17 @@ parameters:
   required: true
   description: id of the configuration item
 requestBody:
-  description: user to add to the system
+  description: updated config for the config item
   content:
     'application/json':
       schema:
-        $ref: '#/components/schemas/User'
+        type: object
+responses:
+  '200':
+    description: the updated config item
+    content:
+      application/json:
+        schema:
+          $ref: "#/components/schemas/ConfigItem"
 produces:
 - application/json

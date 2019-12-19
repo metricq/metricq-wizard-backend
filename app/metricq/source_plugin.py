@@ -77,7 +77,7 @@ class SourcePlugin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def update_config_item(self, config_item_id: str, data: Dict):
+    async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
         raise NotImplementedError
 
     @abstractmethod
