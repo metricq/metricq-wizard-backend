@@ -198,3 +198,9 @@ class Configurator(ManagementAgent):
             return self._loaded_plugins[source_id]
 
         raise
+
+    async def save_source_config(self, source_id):
+        source_plugin = await self.get_source_plugin(source_id)
+        config = await self.couchdb_db_config[source_id]
+        config.update(await source_plugin.get_config())
+        await config.save()

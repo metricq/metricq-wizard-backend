@@ -198,6 +198,18 @@ async def update_source_config(request: Request):
     pass
 
 
+@swagger_path("api_doc/save_source_config.yaml")
+@routes.post("/api/source/{source_id}/save")
+async def save_source_config(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    await configurator.save_source_config(source_id=source_id)
+
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
+
+
 @routes.get("/api/source/{source_id}/get_available_metrics/input_form")
 async def get_available_metrics_input_form(request: Request):
     """

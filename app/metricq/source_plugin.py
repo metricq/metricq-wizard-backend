@@ -72,3 +72,7 @@ class SourcePlugin(ABC):
     @abstractmethod
     async def update_config(self, data: Dict) -> Dict:
         raise NotImplementedError
+
+    @abstractmethod
+    async def get_config(self) -> Dict:
+        raise NotImplementedError
