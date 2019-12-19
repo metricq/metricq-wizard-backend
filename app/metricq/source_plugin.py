@@ -75,15 +75,15 @@ class SourcePlugin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def input_form_edit_config(self) -> Dict[str, Dict]:
+    async def input_form_edit_global_config(self) -> Dict[str, Dict]:
         raise NotImplementedError
 
     @abstractmethod
-    async def get_config(self) -> Dict:
+    async def get_global_config(self) -> Dict:
         raise NotImplementedError
 
     @abstractmethod
-    async def update_config(self, data: Dict) -> Dict:
+    async def update_global_config(self, data: Dict) -> Dict:
         raise NotImplementedError
 
     @abstractmethod
