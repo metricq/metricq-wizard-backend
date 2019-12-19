@@ -296,31 +296,3 @@ async def save_source_config(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
-
-
-@routes.post("/api/source/{source_id}/create_new_metric")
-async def create_new_metric(request: Request):
-    source_id = request.match_info["source_id"]
-    configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
-
-    data = await request.json()
-    source_metric_configuration = source_plugin.input_model_create_new_metric()(**data)
-
-    config = await configurator.get_configs(selector=source_id)
-    if not config or source_id not in config:
-        # TODO return 404
-        pass
-
-    new_config = await source_plugin.create_new_metric(
-        source_metric_configuration, config[source_id]
-    )
-
-    logger.debug(new_config)
-
-    await configurator.set_config(source_id, new_config)
-
-    return Response(
-        text=source_metric_configuration.json(by_alias=True),
-        content_type="application/json",
-    )
