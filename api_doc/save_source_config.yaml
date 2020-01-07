@@ -9,13 +9,13 @@ parameters:
 response:
   '200':
     description: status of the save
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: string
-                description: should be success
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: should be success
 produces:
 - application/json
