@@ -211,10 +211,60 @@ class Plugin(SourcePlugin):
         }
 
     async def get_config_item(self, config_item_id: str) -> Dict:
-        pass
+        host_id, path_id = config_item_id.split("/")
+        host_data = self._hosts[host_id]
+        path = host_data["paths"][path_id]
+
+        for host_id, host_config in list(self._hosts.items()) + [(None, None)]:
+            if host_config["hosts"] == host_data["hosts"]:
+                break
+
+        if host_config:
+            return {
+                "host": host_data["hosts"],
+                "loginType": host_config["login_type"],
+                "user": host_config["user"],
+                "password": None,
+                "path": path,
+            }
+
+        return {}
 
     async def update_config_item(self, config_item_id: str, data: Dict):
-        pass
+        host_id, path_id = config_item_id.split("/")
+        host_data = self._hosts[host_id]
+
+        if data["host"] == "New...":
+            hostname = data["newHost"]
+        else:
+            hostname = data["host"]
+
+        for host_id, host_config in list(self._hosts.items()) + [(None, None)]:
+            if host_config["hosts"] == host_data["hosts"]:
+                break
+
+        if host_config:
+            host_config["paths"][path_id] = data["path"]
+            host_config.update(
+                {
+                    "hosts": hostname,
+                    "login_type": data["loginType"],
+                    "user": data["user"],
+                }
+            )
+            password = data.get("password", None)
+            if password:
+                host_config["password"] = password
+
+            # TODO also update the config, maybe warn the user that login related changes affect all config items for this path
+
+            return ConfigItem(
+                id=f"{host_id}/{path_id}",
+                name=host_config["names"],
+                description=f"{host_config['hosts']}{data['path']}",
+            )
+
+        return None
 
     async def input_form_edit_global_config(self) -> Dict[str, Dict]:
         pass
