@@ -181,11 +181,13 @@ class Configurator(ManagementAgent):
 
     async def get_source_plugin(self, source_id) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
-        # TODO fix type extraction
-        source_type = "source_http"
+        source_type = config.get("type", None)
+        if source_type is None:
+            logger.error(f"No type for source {source_id} provided.")
+            return None
 
         if source_id not in self._loaded_plugins:
-            full_module_name = "metricq_wizard_plugin_{}".format(source_type)
+            full_module_name = f"metricq_wizard_plugin_{source_type}"
             if importlib.util.find_spec(full_module_name):
                 plugin_module = importlib.import_module(full_module_name)
                 self._loaded_plugins[source_id] = plugin_module.get_plugin(config)
@@ -193,11 +195,13 @@ class Configurator(ManagementAgent):
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."
                 )
+                return None
 
         if source_id in self._loaded_plugins:
             return self._loaded_plugins[source_id]
 
-        raise
+        logger.error("Plugin instance for source {source_id} not found.")
+        return None
 
     async def save_source_config(self, source_id):
         source_plugin = await self.get_source_plugin(source_id)
