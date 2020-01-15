@@ -116,7 +116,7 @@ async def get_source_list(request: Request):
     for config_id, config in config_dict.items():
         if config_id.startswith("source-"):
             try:
-                source_list.append({"id": config_id})
+                source_list.append({"id": config_id, "configurable": "type" in config})
             except KeyError:
                 logger.error(f"Config of source {config_id} is incorrect! Missing key")
 
