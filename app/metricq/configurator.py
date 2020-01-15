@@ -182,7 +182,7 @@ class Configurator(ManagementAgent):
     async def get_source_plugin(self, source_id) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
         # TODO fix type extraction
-        source_type = "http"
+        source_type = "source_http"
 
         if source_id not in self._loaded_plugins:
             full_module_name = "metricq_wizard_plugin_{}".format(source_type)
