@@ -1,5 +1,5 @@
 from .plugin import Plugin
 
 
-def get_plugin():
-    return Plugin()
+def get_plugin(config):
+    return Plugin(config)
