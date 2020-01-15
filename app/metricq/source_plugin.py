@@ -19,7 +19,7 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import Sequence, Dict, Type, Any
+from typing import Sequence, Dict, Type, Any, Optional
 
 import pydantic
 
@@ -31,10 +31,11 @@ class AddMetricItem(pydantic.BaseModel):
 
 class AvailableMetricItem(pydantic.BaseModel):
     id: str
-    current_value: Any
+    current_value: Optional[Any]
     metric_prefix: str = ""
     metric_custom_part: str
     metric_suffix: str = ""
+    is_active: bool = False
 
 
 class ConfigItem(pydantic.BaseModel):
