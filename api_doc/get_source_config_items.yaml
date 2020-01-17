@@ -8,6 +8,12 @@ parameters:
   description: id of the source
 responses:
   '200':
-    description: a pet to be returned
+    description: list of configuration items
+    content:
+      'application/json':
+        schema:
+          type: array
+              items:
+                $ref: "#/components/schemas/ConfigItem"
 produces:
 - application/json

@@ -18,6 +18,6 @@ responses:
     content:
       application/json:
         schema:
-          tyep: object
+          type: object
 produces:
 - application/json

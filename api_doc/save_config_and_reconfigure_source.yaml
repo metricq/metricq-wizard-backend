@@ -8,7 +8,7 @@ parameters:
   description: id of the source
 response:
   '200':
-    description: status of the reconfiguration
+    description: status of the save and reconfiguration
     content:
       application/json:
         schema:
