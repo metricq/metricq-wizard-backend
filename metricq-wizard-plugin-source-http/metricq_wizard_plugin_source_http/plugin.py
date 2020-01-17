@@ -82,6 +82,7 @@ class Plugin(SourcePlugin):
                     metric_prefix=f"{host_data['names']}.",
                     metric_custom_part=json_identifier,
                     is_active=json_identifier in active_metrics,
+                    has_custom_part=True,
                 )
                 for json_identifier in data
             ]

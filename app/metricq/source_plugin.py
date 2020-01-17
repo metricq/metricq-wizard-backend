@@ -36,6 +36,7 @@ class AvailableMetricItem(pydantic.BaseModel):
     metric_custom_part: str
     metric_suffix: str = ""
     is_active: bool = False
+    has_custom_part: bool = False
 
 
 class ConfigItem(pydantic.BaseModel):
