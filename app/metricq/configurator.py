@@ -181,10 +181,11 @@ class Configurator(ManagementAgent):
 
     async def get_source_plugin(self, source_id) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
-        source_type = config.get("type", None)
-        if source_type is None:
+        if "type" not in config:
             logger.error(f"No type for source {source_id} provided.")
             return None
+
+        source_type = config["type"].replace("-", "_")
 
         if source_id not in self._loaded_plugins:
             full_module_name = f"metricq_wizard_plugin_{source_type}"
