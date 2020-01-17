@@ -19,36 +19,81 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import Sequence, Dict, Type
+from typing import Sequence, Dict, Type, Any, Optional
 
 import pydantic
 
 
+class AddMetricItem(pydantic.BaseModel):
+    id: str
+    metric_custom_part: str
+
+
+class AvailableMetricItem(pydantic.BaseModel):
+    id: str
+    current_value: Optional[Any]
+    metric_prefix: str = ""
+    metric_custom_part: str
+    metric_suffix: str = ""
+    is_active: bool = False
+    has_custom_part: bool = False
+
+
+class ConfigItem(pydantic.BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
 class SourcePlugin(ABC):
     @abstractmethod
-    def input_form_get_available_metrics(self) -> Dict[str, Dict]:
+    def get_configuration_items(self) -> Sequence[ConfigItem]:
         raise NotImplementedError
 
     @abstractmethod
-    def input_model_get_available_metrics(self) -> Type[pydantic.BaseModel]:
+    async def get_metrics_for_config_item(
+        self, config_item_id: str
+    ) -> Sequence[AvailableMetricItem]:
         raise NotImplementedError
 
     @abstractmethod
-    async def get_available_metrics(
-        self, input_model: pydantic.BaseModel
-    ) -> Sequence[Dict[str, Dict]]:
+    async def add_metrics_for_config_item(
+        self, config_item_id: str, metrics: Sequence[AddMetricItem]
+    ):
         raise NotImplementedError
 
     @abstractmethod
-    def input_form_create_new_metric(self) -> Dict[str, Dict]:
+    def input_form_add_config_item(self) -> Dict[str, Dict]:
         raise NotImplementedError
 
     @abstractmethod
-    def input_model_create_new_metric(self) -> Type[pydantic.BaseModel]:
+    async def add_config_item(self, data: Dict) -> ConfigItem:
         raise NotImplementedError
 
     @abstractmethod
-    async def create_new_metric(
-        self, metric_data: pydantic.BaseModel, old_config: Dict
-    ) -> Dict:
+    def input_form_edit_config_item(self) -> Dict[str, Dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_config_item(self, config_item_id: str) -> Dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def input_form_edit_global_config(self) -> Dict[str, Dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_global_config(self) -> Dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_global_config(self, data: Dict) -> Dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_config(self) -> Dict:
         raise NotImplementedError

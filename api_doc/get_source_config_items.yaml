@@ -1,0 +1,19 @@
+description: Get configuration items for a source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+responses:
+  '200':
+    description: list of configuration items
+    content:
+      'application/json':
+        schema:
+          type: array
+              items:
+                $ref: "#/components/schemas/ConfigItem"
+produces:
+- application/json

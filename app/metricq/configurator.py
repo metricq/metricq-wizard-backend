@@ -55,6 +55,7 @@ class Configurator(ManagementAgent):
         super().__init__(
             token,
             management_url,
+            "",
             couchdb_url,
             couchdb_user,
             couchdb_password,
@@ -179,26 +180,46 @@ class Configurator(ManagementAgent):
                 doc[key] = value
 
     async def get_source_plugin(self, source_id) -> SourcePlugin:
-        config = await self.get_configs(source_id)
-        # TODO fix type extraction
-        source_type = "http"
+        config = await self.couchdb_db_config[source_id]
+        source_type = config.get("type", None)
+        if source_type is None:
+            logger.error(f"No type for source {source_id} provided.")
+            return None
 
-        if source_type not in self._loaded_plugins:
-            full_modul_name = "metricq_wizard_plugin_{}".format(source_type)
-            if importlib.util.find_spec(full_modul_name):
-                plugin_module = importlib.import_module(full_modul_name)
-                self._loaded_plugins[source_type] = plugin_module.get_plugin()
+        if source_id not in self._loaded_plugins:
+            full_module_name = f"metricq_wizard_plugin_{source_type}"
+            if importlib.util.find_spec(full_module_name):
+                plugin_module = importlib.import_module(full_module_name)
+                self._loaded_plugins[source_id] = plugin_module.get_plugin(config)
             else:
                 logger.error(
-                    f"Plugin {full_modul_name} for source {source_id} not found."
+                    f"Plugin {full_module_name} for source {source_id} not found."
                 )
+                return None
 
-        if source_type in self._loaded_plugins:
-            return self._loaded_plugins[source_type]
+        if source_id in self._loaded_plugins:
+            return self._loaded_plugins[source_id]
 
-        raise
+        logger.error("Plugin instance for source {source_id} not found.")
+        return None
 
-    async def reload_loaded_plugins(self):
-        for plugin in self._loaded_plugins:
-            logger.debug(f"Reloading {plugin}")
-            importlib.reload(self._loaded_plugins[plugin])
+    async def save_source_config(self, source_id):
+        async with self._get_config_lock(source_id):
+            source_plugin = await self.get_source_plugin(source_id)
+            config = await self.couchdb_db_config[source_id]
+            self._update_config(config, await source_plugin.get_config())
+            await config.save()
+
+    async def reconfigure_source(self, source_id):
+        async with self._get_config_lock(source_id):
+            config = await self.couchdb_db_config[source_id]
+            await self.rpc(
+                function="config",
+                exchange=self._management_channel.default_exchange,
+                routing_key=f"{source_id}-rpc",
+                response_callback=self._on_source_configure_response,
+                **config,
+            )
+
+    async def _on_source_configure_response(self, response):
+        logger.debug("Source reconfigure completed!")

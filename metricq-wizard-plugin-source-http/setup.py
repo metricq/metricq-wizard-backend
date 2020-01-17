@@ -20,11 +20,11 @@
 from setuptools import setup
 
 setup(
-    name="metricq_wizard_plugin_http",
+    name="metricq_wizard_plugin_source_http",
     version="0.1",
     author="TU Dresden",
     python_requires=">=3.8",
-    packages=["metricq_wizard_plugin_http"],
+    packages=["metricq_wizard_plugin_source_http"],
     scripts=[],
-    install_requires=[],
+    install_requires=["yarl"],
 )
