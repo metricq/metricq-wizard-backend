@@ -1,0 +1,23 @@
+description: Add a new configuration item for selected source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+requestBody:
+  description: fields of the input form for new config item
+  content:
+    'application/json':
+      schema:
+        type: object
+responses:
+  '200':
+    description: the new config item
+    content:
+      application/json:
+        schema:
+          $ref: "#/components/schemas/ConfigItem"
+produces:
+- application/json

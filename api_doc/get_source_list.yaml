@@ -1,0 +1,5 @@
+description: Get list of configured sources
+tags:
+- Sources
+produces:
+- application/json

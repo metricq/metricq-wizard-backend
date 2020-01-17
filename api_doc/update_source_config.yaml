@@ -1,0 +1,23 @@
+description: Update configuration for source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+requestBody:
+  description: updated source global config
+  content:
+    'application/json':
+      schema:
+        type: object
+responses:
+  '200':
+    description: source global configuration
+    content:
+      application/json:
+        schema:
+          type: object
+produces:
+- application/json
