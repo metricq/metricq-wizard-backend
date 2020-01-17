@@ -208,3 +208,17 @@ class Configurator(ManagementAgent):
         config = await self.couchdb_db_config[source_id]
         self._update_config(config, await source_plugin.get_config())
         await config.save()
+
+    async def reconfigure_source(self, source_id):
+        async with self._get_config_lock(source_id):
+            config = await self.couchdb_db_config[source_id]
+            await self.rpc(
+                function="config",
+                exchange=self._management_channel.default_exchange,
+                routing_key=f"{source_id}-rpc",
+                response_callback=self._on_source_configure_response,
+                **config,
+            )
+
+    async def _on_source_configure_response(self, response):
+        logger.debug("Source reconfigure completed!")

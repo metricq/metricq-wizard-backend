@@ -296,3 +296,15 @@ async def save_source_config(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
+
+
+@swagger_path("api_doc/reconfigure_source.yaml")
+@routes.post("/api/source/{source_id}/reconfigure")
+async def save_source_config(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    await configurator.reconfigure_source(source_id=source_id)
+
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
