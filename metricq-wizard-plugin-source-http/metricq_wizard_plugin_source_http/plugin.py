@@ -267,13 +267,25 @@ class Plugin(SourcePlugin):
         return None
 
     async def input_form_edit_global_config(self) -> Dict[str, Dict]:
-        pass
+        return {
+            "interval": {"type": "NumberField"},
+            "http_timeout": {"type": "NumberField"},
+        }
 
     async def get_global_config(self) -> Dict:
-        pass
+        return {
+            "interval": self._config["interval"],
+            "http_timeout": self._config["http_timeout"],
+        }
 
     async def update_global_config(self, data: Dict) -> Dict:
-        pass
+        if "interval" in data:
+            self._config["interval"] = data["interval"]
+
+        if "http_timeout" in data:
+            self._config["http_timeout"] = data["http_timeout"]
+
+        return data
 
     async def get_config(self) -> Dict:
         return self._config
