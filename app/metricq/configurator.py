@@ -204,10 +204,11 @@ class Configurator(ManagementAgent):
         return None
 
     async def save_source_config(self, source_id):
-        source_plugin = await self.get_source_plugin(source_id)
-        config = await self.couchdb_db_config[source_id]
-        self._update_config(config, await source_plugin.get_config())
-        await config.save()
+        async with self._get_config_lock(source_id):
+            source_plugin = await self.get_source_plugin(source_id)
+            config = await self.couchdb_db_config[source_id]
+            self._update_config(config, await source_plugin.get_config())
+            await config.save()
 
     async def reconfigure_source(self, source_id):
         async with self._get_config_lock(source_id):
