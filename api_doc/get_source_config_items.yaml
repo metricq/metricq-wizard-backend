@@ -10,10 +10,10 @@ responses:
   '200':
     description: list of configuration items
     content:
-      'application/json':
+      application/json:
         schema:
           type: array
-              items:
-                $ref: "#/components/schemas/ConfigItem"
+          items:
+            $ref: "#/components/schemas/ConfigItem"
 produces:
 - application/json
