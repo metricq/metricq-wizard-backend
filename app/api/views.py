@@ -251,7 +251,7 @@ async def get_source_edit_global_config_input_form(request: Request):
     source_plugin = await configurator.get_source_plugin(source_id=source_id)
 
     return Response(
-        text=json.dumps(source_plugin.input_form_edit_global_config()),
+        text=json.dumps(await source_plugin.input_form_edit_global_config()),
         content_type="application/json",
     )
 
