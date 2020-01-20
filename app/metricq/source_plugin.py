@@ -83,6 +83,10 @@ class SourcePlugin(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def delete_config_item(self, config_item_id: str):
+        raise NotImplementedError
+
+    @abstractmethod
     async def input_form_edit_global_config(self) -> Dict[str, Dict]:
         raise NotImplementedError
 
