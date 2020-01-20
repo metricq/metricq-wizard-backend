@@ -147,7 +147,7 @@ class Plugin(SourcePlugin):
         if "chunk_size" in data:
             self._config["chunk_size"] = int(data["chunk_size"])
         if "mode" in data and data["mode"] in ["cycle", "gapless"]:
-            self._config["mode"] = data["mode"]
+            self._config["measurement"]["mode"] = data["mode"]
         if "filter" in data:
             self._config["measurement"]["filter"] = data["filter"]
         if "sampling_rate" in data:
