@@ -88,6 +88,10 @@ class Plugin(SourcePlugin):
             )
         return None
 
+    async def delete_config_item(self, config_item_id: str):
+        ci_id = int(config_item_id)
+        del self._config["channels"][ci_id]
+
     def input_form_edit_config_item(self) -> Dict[str, Dict]:
         return {
             "name": {"type": "StringField"},
