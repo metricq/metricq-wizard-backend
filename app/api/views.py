@@ -74,6 +74,28 @@ async def get_db_list(request: Request):
     for config_id, config in config_dict.items():
         if config_id.startswith("db-"):
             try:
+                db_list.append({"id": config_id})
+            except KeyError:
+                logger.error(
+                    f"Config of database {config_id} is incorrect! Missing key"
+                )
+            except AttributeError:
+                logger.error(
+                    f"Config of database {config_id} is incorrect! 'metrics' is list not dict"
+                )
+
+    return Response(text=json.dumps(db_list), content_type="application/json")
+
+
+@routes.post("/api/databases/historic_metrics")
+async def post_db_list_with_historic_metrics(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+    config_dict = await configurator.get_configs()
+    data = await request.json()
+    db_list = []
+    for config_id, config in config_dict.items():
+        if config_id.startswith("db-"):
+            try:
                 db_list.append(
                     {
                         "id": config_id,
@@ -86,6 +108,7 @@ async def get_db_list(request: Request):
                                 "intervalFactor": metric_config["interval_factor"],
                             }
                             for metric_id, metric_config in config["metrics"].items()
+                            if metric_id in data["selectedMetrics"]
                         ],
                     }
                 )
