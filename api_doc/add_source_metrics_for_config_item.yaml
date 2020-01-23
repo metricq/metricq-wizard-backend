@@ -20,5 +20,14 @@ requestBody:
             type: array
             items:
               $ref: "#/components/schemas/AddMetricItem"
+responses:
+  '200':
+    description: name of the new active metrics
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: string
 produces:
   - application/json

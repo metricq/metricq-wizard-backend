@@ -183,11 +183,13 @@ async def add_source_metrics_for_config_item(request: Request):
     if "metrics" not in request_data:
         raise HTTPBadRequest
 
-    await source_plugin.add_metrics_for_config_item(
+    new_metrics = await source_plugin.add_metrics_for_config_item(
         config_item_id, [AddMetricItem(**metric) for metric in request_data["metrics"]]
     )
 
-    return Response(text="", content_type="application/json")
+    return Response(
+        text=json.dumps({"metrics": new_metrics}), content_type="application/json"
+    )
 
 
 @routes.get("/api/source/{source_id}/config_items/input_form")

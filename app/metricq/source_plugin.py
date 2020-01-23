@@ -59,7 +59,7 @@ class SourcePlugin(ABC):
     @abstractmethod
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
-    ):
+    ) -> Sequence[str]:
         raise NotImplementedError
 
     @abstractmethod
