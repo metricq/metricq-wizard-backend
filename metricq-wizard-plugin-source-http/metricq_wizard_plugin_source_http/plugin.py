@@ -89,7 +89,7 @@ class Plugin(SourcePlugin):
 
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
-    ):
+    ) -> Sequence[str]:
         host_id, path_id = config_item_id.split("/")
         host_data = self._hosts[host_id]
         path = host_data["paths"][path_id]
@@ -112,9 +112,11 @@ class Plugin(SourcePlugin):
                         host_config["metrics"][
                             metric.metric_custom_part
                         ] = metric_config
+            return [f"{host_config['names']}.{metric}" for metric in metrics]
         else:
             # TODO Generate new host entry in config
             pass
+        return []
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
