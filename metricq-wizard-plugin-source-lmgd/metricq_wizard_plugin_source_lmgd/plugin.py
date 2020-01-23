@@ -56,10 +56,15 @@ class Plugin(SourcePlugin):
 
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
-    ):
+    ) -> Sequence[str]:
         ci_id = int(config_item_id)
         channel_config = self._config["channels"][ci_id]
+        old_metrics = channel_config["metrics"]
         channel_config["metrics"] = [metric.id for metric in metrics]
+
+        new_metrics = set([metric.id for metric in metrics]) - set(old_metrics)
+
+        return [f"{channel_config['name']}.{metric}" for metric in new_metrics]
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
