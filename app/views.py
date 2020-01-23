@@ -13,6 +13,7 @@ async def index(request):
 
     :param request: the request object see http://aiohttp.readthedocs.io/en/stable/web_reference.html#request
     :return: context for the template.
+    ---
     """
     # Note: we return a dict not a response because of the @template decorator
     return {
