@@ -51,6 +51,46 @@ async def get_metric_list(request: Request):
     return Response(text=json.dumps(metric_list), content_type="application/json")
 
 
+@routes.post("/api/metrics")
+async def post_metric_list(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    request_data = await request.json()
+    if "requested_metrics" in request_data:
+        requested_metrics = request_data.get("requested_metrics", [])
+
+        metric_dict = await client.get_metrics(format="object")
+        metric_list = []
+        for metric_id in requested_metrics:
+            if metric_id in metric_dict:
+                metric = metric_dict[metric_id]
+                metric["id"] = metric_id
+                metric_list.append(metric)
+            else:
+                metric = {"id": metric_id}
+                metric_list.append(metric)
+    elif "database" in request_data:
+        requested_database = request_data["database"]
+
+        # TODO filter db
+
+        metric_dict = await client.get_metrics(historic=True, format="object")
+        metric_list = []
+        for metric_id in metric_dict:
+            metric = metric_dict[metric_id]
+            metric["id"] = metric_id
+            metric_list.append(metric)
+    elif "source" in request_data:
+        requested_source = request_data["source"]
+        metric_dict = await client.get_metrics(source=requested_source, format="object")
+        metric_list = []
+        for metric_id in metric_dict:
+            metric = metric_dict[metric_id]
+            metric["id"] = metric_id
+            metric_list.append(metric)
+
+    return Response(text=json.dumps(metric_list), content_type="application/json")
+
+
 @routes.post("/api/metrics/database")
 async def post_metric_list(request: Request):
     client: Configurator = request.app["metricq_client"]
