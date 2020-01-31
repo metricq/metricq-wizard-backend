@@ -59,7 +59,7 @@ async def cleanup(app: web.Application):
     return
 
 
-async def create_app(loop):
+async def create_app(loop=None):
     app = web.Application(loop=loop)
     settings = Settings()
     app.update(settings=settings, static_root_url="/static/")
