@@ -1,0 +1,19 @@
+description: Send configuration to client
+parameters:
+- in: path
+  name: client_id
+  required: true
+  description: id of the client
+response:
+  '200':
+    description: status of the reconfiguration
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: should be success
+produces:
+- application/json
