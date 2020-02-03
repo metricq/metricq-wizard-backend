@@ -111,7 +111,9 @@ class Configurator(ManagementAgent):
         else:
             aiter = self.couchdb_db_config.all_docs.docs()
 
-        configs = {doc["_id"]: doc async for doc in aiter}
+        configs = {
+            doc["_id"]: doc async for doc in aiter if not doc["_id"].startswith("_")
+        }
 
         return configs
 
