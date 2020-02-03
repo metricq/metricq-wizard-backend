@@ -33,7 +33,6 @@ from .api.views import routes as api_routes
 from .metricq import Configurator
 from .metricq.source_plugin import AddMetricItem, AvailableMetricItem, ConfigItem
 from .settings import Settings
-from .views import index
 
 THIS_DIR = Path(__file__).parent
 
@@ -83,7 +82,6 @@ async def create_app(loop=None):
         },
     )
 
-    app.router.add_get("/", index, name="index")
     app.router.add_routes(api_routes)
 
     # from https://github.com/aio-libs/aiohttp-cors/issues/155#issue-297282191
