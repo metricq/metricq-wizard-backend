@@ -229,8 +229,7 @@ async def get_source_metrics_for_config_item(request: Request):
     metric_list = await source_plugin.get_metrics_for_config_item(config_item_id)
 
     return Response(
-        text=json.dumps([metric.dict() for metric in metric_list]),
-        content_type="application/json",
+        text=metric_list.json(by_alias=True), content_type="application/json"
     )
 
 
