@@ -17,7 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
-
+import re
 from abc import ABC, abstractmethod
 from typing import Sequence, Dict, Type, Any, Optional
 
@@ -26,17 +26,32 @@ import pydantic
 
 class AddMetricItem(pydantic.BaseModel):
     id: str
-    metric_custom_part: str
+    custom_columns_values: Dict
+
+    class Config:
+        allow_population_by_alias = True
+
+        @classmethod
+        def alias_generator(cls, string: str) -> str:
+            return re.sub(r"_([a-z])", lambda m: m.group(1).upper(), string)
 
 
 class AvailableMetricItem(pydantic.BaseModel):
     id: str
-    current_value: Optional[Any]
-    metric_prefix: str = ""
-    metric_custom_part: str
-    metric_suffix: str = ""
     is_active: bool = False
-    has_custom_part: bool = False
+    custom_columns: Dict
+
+    class Config:
+        allow_population_by_alias = True
+
+        @classmethod
+        def alias_generator(cls, string: str) -> str:
+            return re.sub(r"_([a-z])", lambda m: m.group(1).upper(), string)
+
+
+class AvailableMetricList(pydantic.BaseModel):
+    columns: Dict[str, str]
+    metrics: Sequence[AvailableMetricItem]
 
 
 class ConfigItem(pydantic.BaseModel):
@@ -53,7 +68,7 @@ class SourcePlugin(ABC):
     @abstractmethod
     async def get_metrics_for_config_item(
         self, config_item_id: str
-    ) -> Sequence[AvailableMetricItem]:
+    ) -> AvailableMetricList:
         raise NotImplementedError
 
     @abstractmethod
