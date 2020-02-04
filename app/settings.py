@@ -16,3 +16,4 @@ class Settings(BaseSettings):
     couchdb_url = "http://localhost:5984"
     couchdb_user = "admin"
     couchdb_password = "admin"
+    dry_run = False
