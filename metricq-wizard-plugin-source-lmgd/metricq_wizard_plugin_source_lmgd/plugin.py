@@ -1,12 +1,17 @@
 import json
 from typing import Dict, Sequence
 
+from metricq import get_logger
+
 from app.metricq.source_plugin import (
     SourcePlugin,
     AddMetricItem,
     AvailableMetricItem,
     ConfigItem,
+    AvailableMetricList,
 )
+
+logger = get_logger(__name__)
 
 
 class Plugin(SourcePlugin):
@@ -21,7 +26,7 @@ class Plugin(SourcePlugin):
 
     async def get_metrics_for_config_item(
         self, config_item_id: str
-    ) -> Sequence[AvailableMetricItem]:
+    ) -> AvailableMetricList:
         ci_id = int(config_item_id)
         channel_config = self._config["channels"][ci_id]
         available_metrics = ["voltage", "current", "power"]
@@ -44,15 +49,41 @@ class Plugin(SourcePlugin):
                 ]
             )
 
-        return [
-            AvailableMetricItem(
-                id=metric,
-                metric_prefix=f"{channel_config['name']}.{metric}",
-                metric_custom_part="",
-                is_active=metric in channel_config["metrics"],
+        activated_metrics = {}
+        for metric in channel_config["metrics"]:
+            split_metric = metric.split("@", 1)
+            if len(split_metric) > 1:
+                activated_metrics[split_metric[0]] = f".{split_metric[1]}"
+            else:
+                activated_metrics[split_metric[0]] = ""
+
+        available_metric_items = []
+        for metric in available_metrics:
+            custom_columns = {
+                "metric_name": {
+                    "_": {
+                        "type": "LabelField",
+                        "value": f"{channel_config['name']}.{metric}",
+                    }
+                }
+            }
+            if self._config["measurement"]["mode"] == "gapless":
+                custom_columns["metric_name"]["bandwidth"] = {
+                    "type": "SelectField",
+                    "options": ["", ".narrow"],
+                    "value": activated_metrics.get(metric, ""),
+                }
+            available_metric_items.append(
+                AvailableMetricItem(
+                    id=metric,
+                    custom_columns=custom_columns,
+                    is_active=metric in activated_metrics,
+                )
             )
-            for metric in available_metrics
-        ]
+
+        return AvailableMetricList(
+            columns={"metric_name": "Metric Name"}, metrics=available_metric_items
+        )
 
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
@@ -60,7 +91,17 @@ class Plugin(SourcePlugin):
         ci_id = int(config_item_id)
         channel_config = self._config["channels"][ci_id]
         old_metrics = channel_config["metrics"]
-        channel_config["metrics"] = [metric.id for metric in metrics]
+        channel_config["metrics"] = []
+        for metric in metrics:
+            bandwidth = None
+            if "metric_name" in metric.custom_columns_values:
+                bandwidth = metric.custom_columns_values["metric_name"].get(
+                    "bandwidth", ""
+                )[1:]
+            if bandwidth:
+                channel_config["metrics"].append(f"{metric.id}@{bandwidth}")
+            else:
+                channel_config["metrics"].append(metric.id)
 
         new_metrics = set([metric.id for metric in metrics]) - set(old_metrics)
 
