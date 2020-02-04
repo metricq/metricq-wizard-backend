@@ -383,7 +383,8 @@ async def save_source_config(request: Request):
 async def reconfigure_source(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.reconfigure_client(client_id=source_id)
+    if not request.app["settings"].dry_run:
+        await configurator.reconfigure_client(client_id=source_id)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
@@ -396,7 +397,8 @@ async def save_config_and_reconfigure_source(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
     await configurator.save_source_config(source_id=source_id)
-    await configurator.reconfigure_client(client_id=source_id)
+    if not request.app["settings"].dry_run:
+        await configurator.reconfigure_client(client_id=source_id)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
@@ -420,7 +422,8 @@ async def get_client_list(request: Request):
 async def reconfigure_client(request: Request):
     client_id = request.match_info["client_id"]
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.reconfigure_client(client_id=client_id)
+    if not request.app["settings"].dry_run:
+        await configurator.reconfigure_client(client_id=client_id)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
