@@ -62,7 +62,7 @@ class Plugin(SourcePlugin):
                 "metric_name": {
                     "_": {
                         "type": "LabelField",
-                        "value": f"{channel_config['name']}.{metric}",
+                        "value": f"{channel_config['name']}.{metric.replace('@', '.')}",
                     }
                 }
             }
