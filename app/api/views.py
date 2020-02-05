@@ -195,10 +195,13 @@ async def get_source_config_items(request: Request):
 
     return Response(
         text=json.dumps(
-            [
-                config_item.dict()
-                for config_item in source_plugin.get_configuration_items()
-            ]
+            {
+                "configItemName": source_plugin.get_config_item_name(),
+                "configItems": [
+                    config_item.dict()
+                    for config_item in source_plugin.get_configuration_items()
+                ],
+            }
         ),
         content_type="application/json",
     )

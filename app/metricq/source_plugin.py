@@ -62,6 +62,10 @@ class ConfigItem(pydantic.BaseModel):
 
 class SourcePlugin(ABC):
     @abstractmethod
+    def get_config_item_name(self) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_configuration_items(self) -> Sequence[ConfigItem]:
         raise NotImplementedError
 

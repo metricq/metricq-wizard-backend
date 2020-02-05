@@ -18,6 +18,9 @@ class Plugin(SourcePlugin):
     def __init__(self, config):
         self._config = config
 
+    def get_config_item_name(self) -> str:
+        return "channel"
+
     def get_configuration_items(self) -> Sequence[ConfigItem]:
         return [
             ConfigItem(id=ci_id, name=channel["name"], description=json.dumps(channel))
