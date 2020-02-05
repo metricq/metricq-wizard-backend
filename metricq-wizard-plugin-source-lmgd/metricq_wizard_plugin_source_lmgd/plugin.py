@@ -53,9 +53,9 @@ class Plugin(SourcePlugin):
         for metric in channel_config["metrics"]:
             split_metric = metric.split("@", 1)
             if len(split_metric) > 1:
-                activated_metrics[split_metric[0]] = f".{split_metric[1]}"
+                activated_metrics[split_metric[0]] = f"{split_metric[1]}"
             else:
-                activated_metrics[split_metric[0]] = ""
+                activated_metrics[split_metric[0]] = None
 
         available_metric_items = []
         for metric in available_metrics:
@@ -70,8 +70,11 @@ class Plugin(SourcePlugin):
             if self._config["measurement"]["mode"] == "gapless":
                 custom_columns["metric_name"]["bandwidth"] = {
                     "type": "SelectField",
-                    "options": ["", ".narrow"],
-                    "value": activated_metrics.get(metric, ""),
+                    "options": [
+                        {"text": " (wide)", "value": None},
+                        {"text": ".narrow", "value": "narrow"},
+                    ],
+                    "value": activated_metrics.get(metric, None),
                 }
             available_metric_items.append(
                 AvailableMetricItem(
@@ -95,9 +98,7 @@ class Plugin(SourcePlugin):
         for metric in metrics:
             bandwidth = None
             if "metric_name" in metric.custom_columns_values:
-                bandwidth = metric.custom_columns_values["metric_name"].get(
-                    "bandwidth", ""
-                )[1:]
+                bandwidth = metric.custom_columns_values["metric_name"].get("bandwidth")
             if bandwidth:
                 channel_config["metrics"].append(f"{metric.id}@{bandwidth}")
             else:
@@ -110,7 +111,13 @@ class Plugin(SourcePlugin):
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
             "name": {"type": "StringField"},
-            "coupling": {"type": "SelectField", "options": ["AC", "ACDC"]},
+            "coupling": {
+                "type": "SelectField",
+                "options": [
+                    {"text": "AC", "value": "AC"},
+                    {"text": "ACDC", "value": "ACDC"},
+                ],
+            },
             "voltage_range": {"type": "NumberField"},
             "current_range": {"type": "NumberField"},
         }
@@ -141,7 +148,13 @@ class Plugin(SourcePlugin):
     def input_form_edit_config_item(self) -> Dict[str, Dict]:
         return {
             "name": {"type": "StringField"},
-            "coupling": {"type": "SelectField", "options": ["AC", "ACDC"]},
+            "coupling": {
+                "type": "SelectField",
+                "options": [
+                    {"text": "AC", "value": "AC"},
+                    {"text": "ACDC", "value": "ACDC"},
+                ],
+            },
             "voltage_range": {"type": "NumberField"},
             "current_range": {"type": "NumberField"},
         }
@@ -169,11 +182,23 @@ class Plugin(SourcePlugin):
             "filter": {"type": "StringField"},
             "sampling_rate": {"type": "NumberField"},
             "serial": {"type": "StringField"},
-            "connection": {"type": "SelectField", "options": ["serial", "socket"]},
+            "connection": {
+                "type": "SelectField",
+                "options": [
+                    {"text": "serial", "value": "serial"},
+                    {"text": "socket", "value": "socket"},
+                ],
+            },
             "port": {"type": "StringField"},
             "ip": {"type": "StringField"},
             "num_channels": {"type": "NumberField"},
-            "mode": {"type": "SelectField", "options": ["cycle", "gapless"]},
+            "mode": {
+                "type": "SelectField",
+                "options": [
+                    {"text": "cycle", "value": "cycle"},
+                    {"text": "gapless", "value": "gapless"},
+                ],
+            },
         }
 
     async def get_global_config(self) -> Dict:
