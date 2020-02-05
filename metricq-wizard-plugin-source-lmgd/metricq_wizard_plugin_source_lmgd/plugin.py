@@ -51,14 +51,10 @@ class Plugin(SourcePlugin):
                     "phi",
                 ]
             )
-
-        activated_metrics = {}
-        for metric in channel_config["metrics"]:
-            split_metric = metric.split("@", 1)
-            if len(split_metric) > 1:
-                activated_metrics[split_metric[0]] = f"{split_metric[1]}"
-            else:
-                activated_metrics[split_metric[0]] = None
+        elif self._config["measurement"]["mode"] == "gapless":
+            available_metrics.extend(
+                [f"{metric}@narrow" for metric in available_metrics]
+            )
 
         available_metric_items = []
         for metric in available_metrics:
@@ -71,25 +67,27 @@ class Plugin(SourcePlugin):
                 }
             }
             if self._config["measurement"]["mode"] == "gapless":
-                custom_columns["metric_name"]["bandwidth"] = {
-                    "type": "SelectField",
-                    "options": [
-                        {"text": " (wide)", "value": None},
-                        {"text": ".narrow", "value": "narrow"},
-                    ],
-                    "value": activated_metrics.get(metric, None),
+                metric_parts = metric.split("@")
+                if len(metric_parts) > 1:
+                    bandwidth = metric_parts[1]
+                else:
+                    bandwidth = "wide"
+                custom_columns["bandwidth"] = {
+                    "_": {"type": "LabelField", "value": bandwidth}
                 }
             available_metric_items.append(
                 AvailableMetricItem(
                     id=metric,
                     custom_columns=custom_columns,
-                    is_active=metric in activated_metrics,
+                    is_active=metric in channel_config["metrics"],
                 )
             )
 
-        return AvailableMetricList(
-            columns={"metric_name": "Metric Name"}, metrics=available_metric_items
-        )
+        columns = {"metric_name": "Metric Name"}
+        if self._config["measurement"]["mode"] == "gapless":
+            columns["bandwidth"] = "Bandwidth"
+
+        return AvailableMetricList(columns=columns, metrics=available_metric_items)
 
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
@@ -99,13 +97,7 @@ class Plugin(SourcePlugin):
         old_metrics = channel_config["metrics"]
         channel_config["metrics"] = []
         for metric in metrics:
-            bandwidth = None
-            if "metric_name" in metric.custom_columns_values:
-                bandwidth = metric.custom_columns_values["metric_name"].get("bandwidth")
-            if bandwidth:
-                channel_config["metrics"].append(f"{metric.id}@{bandwidth}")
-            else:
-                channel_config["metrics"].append(metric.id)
+            channel_config["metrics"].append(metric.id)
 
         new_metrics = set([metric.id for metric in metrics]) - set(old_metrics)
 
