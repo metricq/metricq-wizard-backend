@@ -8,12 +8,17 @@ parameters:
   description: id of the source
 responses:
   '200':
-    description: list of configuration items
+    description: source specific name for config items and list of configuration items
     content:
       application/json:
         schema:
-          type: array
-          items:
-            $ref: "#/components/schemas/ConfigItem"
+          type: object
+          properties:
+            configItemName:
+              type: string
+            configItems:
+              type: array
+              items:
+                $ref: "#/components/schemas/ConfigItem"
 produces:
 - application/json
