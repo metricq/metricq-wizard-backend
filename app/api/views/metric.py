@@ -22,13 +22,15 @@ import json
 import metricq
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
+from aiohttp.web_routedef import RouteTableDef
 
 from app.api.models import MetricDatabaseConfiguration
-from app.api.views import routes
 from app.metricq import Configurator
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
+
+routes = RouteTableDef()
 
 
 @routes.get("/api/metrics")

@@ -29,7 +29,7 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 import aiohttp_cors
 from aiohttp_swagger import setup_swagger
 
-from .api.views import routes as api_routes
+from . import api
 from .metricq import Configurator
 from .metricq.source_plugin import AddMetricItem, AvailableMetricItem, ConfigItem
 from .settings import Settings
@@ -82,7 +82,7 @@ async def create_app(loop=None):
         },
     )
 
-    app.router.add_routes(api_routes)
+    api.views.add_routes_to_app(app)
 
     # from https://github.com/aio-libs/aiohttp-cors/issues/155#issue-297282191
     for route in list(app.router.routes()):
