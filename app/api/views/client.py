@@ -22,13 +22,15 @@ import json
 import metricq
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
+from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
-from app.api.views import routes
 from app.metricq import Configurator
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
+
+routes = RouteTableDef()
 
 
 @swagger_path("api_doc/get_client_list.yaml")

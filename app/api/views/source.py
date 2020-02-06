@@ -22,15 +22,17 @@ import json
 from aiohttp.web_exceptions import HTTPBadRequest
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
+from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
 import metricq
-from app.api.views import routes
 from app.metricq import Configurator
 from app.metricq.source_plugin import AddMetricItem
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
+
+routes = RouteTableDef()
 
 
 @swagger_path("api_doc/get_source_list.yaml")
