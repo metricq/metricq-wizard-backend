@@ -13,6 +13,19 @@ from app.metricq.source_plugin import (
 
 logger = get_logger(__name__)
 
+# bandwidth does not matter here
+# bandwidth is only support for gapless mode, where only voltage, current and power is supported!
+metric_id_to_name = {
+    "voltage_min": "voltage.min",
+    "voltage_max": "voltage.max",
+    "voltage_crest": "voltage.crest",
+    "current_min": "current.min",
+    "current_max": "current.max",
+    "current_crest": "current.crest",
+    "apparent_power": "power.apparent",
+    "reactive_power": "power.reactive",
+}
+
 
 class Plugin(SourcePlugin):
     def __init__(self, config):
@@ -42,12 +55,8 @@ class Plugin(SourcePlugin):
                     "current_min",
                     "current_max",
                     "current_crest",
-                    "active_power",
-                    "apparent",
                     "apparent_power",
-                    "reactive",
                     "reactive_power",
-                    "phase",
                     "phi",
                 ]
             )
@@ -62,7 +71,7 @@ class Plugin(SourcePlugin):
                 "metric_name": {
                     "_": {
                         "type": "LabelField",
-                        "value": f"{channel_config['name']}.{metric.replace('@', '.')}",
+                        "value": f"{channel_config['name']}.{metric_id_to_name.get(metric, metric).replace('@', '.')}",
                     }
                 }
             }
@@ -101,7 +110,10 @@ class Plugin(SourcePlugin):
 
         new_metrics = set([metric.id for metric in metrics]) - set(old_metrics)
 
-        return [f"{channel_config['name']}.{metric}" for metric in new_metrics]
+        return [
+            f"{channel_config['name']}.{metric_id_to_name.get(metric, metric).replace('@', '.')}"
+            for metric in new_metrics
+        ]
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
