@@ -18,12 +18,12 @@ logger = get_logger(__name__)
 metric_id_to_name = {
     "voltage_min": "voltage.min",
     "voltage_max": "voltage.max",
-    "voltage_crest": "voltage.crest",
+    "voltage_crest": "voltage_crest",
     "current_min": "current.min",
     "current_max": "current.max",
-    "current_crest": "current.crest",
-    "apparent_power": "power.apparent",
-    "reactive_power": "power.reactive",
+    "current_crest": "current_crest",
+    "apparent_power": "apparent_power",
+    "reactive_power": "reactive_power",
 }
 
 
