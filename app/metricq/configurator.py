@@ -117,14 +117,19 @@ class Configurator(ManagementAgent):
 
         return configs
 
-    async def set_config(self, token: str, new_config: dict):
+    async def set_config(self, token: str, new_config: dict, replace=False):
         arguments = {"token": token, "config": new_config}
         logger.debug(arguments)
 
-        config = await self.couchdb_db_config[token]
-        if config:
-            self._update_config(config, new_config)
-            await config.save()
+        async with self._get_config_lock(token):
+
+            config = await self.couchdb_db_config[token]
+            if config:
+                if replace:
+                    self._replace_config(config, new_config)
+                else:
+                    self._update_config(config, new_config)
+                await config.save()
 
         return
 
@@ -177,9 +182,19 @@ class Configurator(ManagementAgent):
         return config_lock
 
     def _update_config(self, doc, config):
+        """Updates keys in doc not reserved for couchdb with values from config"""
         for key, value in config.items():
             if not key.startswith("_"):
                 doc[key] = value
+
+    def _replace_config(self, doc, config):
+        """Updates keys in doc not reserved for couchdb with values from config, but also DELETES keys not in config from doc"""
+        doc_keys = [key for key in doc.keys() if not key.startswith("_")]
+        for doc_key in doc_keys:
+            if doc_key not in config:
+                del doc[doc_key]
+
+        self._update_config(doc, config)
 
     async def get_source_plugin(self, source_id) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
