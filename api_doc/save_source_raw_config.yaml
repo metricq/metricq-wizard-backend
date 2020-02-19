@@ -1,0 +1,21 @@
+description: Save full configuration for source, replacing existing configuration
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+response:
+  '200':
+    description: status of the save
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: should be success
+produces:
+- application/json
