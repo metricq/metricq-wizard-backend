@@ -1,0 +1,21 @@
+description: Get full configuration for source as json object
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+responses:
+  '200':
+    description: full source configuration
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            config:
+              type: object
+              description: the config
+produces:
+- application/json

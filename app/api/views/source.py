@@ -44,7 +44,13 @@ async def get_source_list(request: Request):
     for config_id, config in config_dict.items():
         if config_id.startswith("source-"):
             try:
-                source_list.append({"id": config_id, "configurable": "type" in config, "type": config.get("type")})
+                source_list.append(
+                    {
+                        "id": config_id,
+                        "configurable": "type" in config,
+                        "type": config.get("type"),
+                    }
+                )
             except KeyError:
                 logger.error(f"Config of source {config_id} is incorrect! Missing key")
 
@@ -266,6 +272,43 @@ async def save_config_and_reconfigure_source(request: Request):
     await configurator.save_source_config(source_id=source_id)
     if not request.app["settings"].dry_run:
         await configurator.reconfigure_client(client_id=source_id)
+
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
+
+
+@swagger_path("api_doc/get_source_raw_config.yaml")
+@routes.get("/api/source/{source_id}/raw_config")
+async def get_source_raw_config(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    config = await configurator.read_config(source_id)
+
+    keys_to_filter = list(filter(lambda k: k.startswith("_"), config.keys()))
+
+    for key in keys_to_filter:
+        del config[key]
+
+    return Response(
+        text=json.dumps({"config": config}), content_type="application/json"
+    )
+
+
+@swagger_path("api_doc/save_source_raw_config.yaml")
+@routes.post("/api/source/{source_id}/raw_config")
+async def save_source_raw_config(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+
+    request_data = await request.json()
+
+    keys_to_filter = list(filter(lambda k: k.startswith("_"), request_data.keys()))
+
+    for key in keys_to_filter:
+        del request_data[key]
+
+    await configurator.set_config(source_id, request_data, replace=True)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
