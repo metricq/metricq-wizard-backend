@@ -17,6 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import math
 import json
 
 import metricq
@@ -83,6 +84,44 @@ async def post_metric_list(request: Request):
             metric = metric_dict[metric_id]
             metric["id"] = metric_id
             metric_list.append(metric)
+
+    return Response(text=json.dumps(metric_list), content_type="application/json")
+
+
+def _get_interval_max_ns(interval_min_ns, interval_factor):
+    n = int(math.log((24 * 60 * 60e9) / interval_min_ns, interval_factor))
+    return interval_min_ns * (interval_factor ^ n)
+
+
+@routes.post("/api/metrics/database/defaults")
+async def post_metric_database_default_config(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    request_data = await request.json()
+
+    selected_metrics = request_data.get("selectedMetrics", [])
+
+    metric_list = []
+
+    if selected_metrics:
+        metric_dict = await client.get_metrics(
+            format="object", selector=selected_metrics
+        )
+        logger.debug(metric_dict)
+        for metric_id, metric_config in metric_dict.items():
+            if "historic" not in metric_config or not metric_config["historic"]:
+                try:
+                    metric_list.append(
+                        {
+                            "id": metric_id,
+                            "intervalMin": f"{30e3 / float(metric_config['rate']):.0f}ms",
+                            "intervalMax": f"{_get_interval_max_ns(30e9 / float(metric_config['rate']), 10) / 1e6:.0f}ms",
+                            "intervalFactor": 10,
+                        }
+                    )
+                except ValueError:
+                    logger.warning(
+                        f"Metric {metric_id} has invalid rate: {metric_config['rate']}"
+                    )
 
     return Response(text=json.dumps(metric_list), content_type="application/json")
 
