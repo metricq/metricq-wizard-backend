@@ -161,6 +161,12 @@ async def post_db_list_with_historic_metrics(request: Request):
 
 
 @routes.post("/api/database/{database_id}/reconfigure")
-async def post_metric_list(request: Request):
-    logger.debug(f"Reconfiguring {request.match_info['database_id']}")
-    return Response(text="Hello, {}".format(request.match_info["database_id"]))
+async def reconfigure_database(request: Request):
+    database_id = request.match_info["database_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    if not request.app["settings"].dry_run:
+        await configurator.reconfigure_client(client_id=database_id)
+
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
