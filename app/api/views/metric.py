@@ -88,9 +88,12 @@ async def post_metric_list(request: Request):
     return Response(text=json.dumps(metric_list), content_type="application/json")
 
 
-def _get_interval_max_ns(interval_min_ns, interval_factor):
-    n = int(math.log((24 * 60 * 60e9) / interval_min_ns, interval_factor))
-    return interval_min_ns * (interval_factor ^ n)
+def _get_interval_max_ms(interval_min_ms: int, interval_factor: int) -> int:
+    ms_a_day = 24 * 60 * 60e3
+    n = int(math.log(ms_a_day / interval_min_ms, interval_factor))
+    if interval_min_ms * (interval_factor ** n) >= ms_a_day:
+        return interval_min_ms * (interval_factor ** n)
+    return interval_min_ms * (interval_factor ** (n + 1))
 
 
 @routes.post("/api/metrics/database/defaults")
@@ -113,8 +116,8 @@ async def post_metric_database_default_config(request: Request):
                     metric_list.append(
                         {
                             "id": metric_id,
-                            "intervalMin": f"{30e3 / float(metric_config['rate']):.0f}ms",
-                            "intervalMax": f"{_get_interval_max_ns(30e9 / float(metric_config['rate']), 10) / 1e6:.0f}ms",
+                            "intervalMin": f"{int(40e3 / float(metric_config['rate'])) or 1:d}ms",
+                            "intervalMax": f"{_get_interval_max_ms(int(40e3 / float(metric_config['rate'])) or 1, 10):d}ms",
                             "intervalFactor": 10,
                         }
                     )
