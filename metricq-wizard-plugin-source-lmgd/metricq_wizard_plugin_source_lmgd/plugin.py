@@ -9,6 +9,7 @@ from app.metricq.source_plugin import (
     AvailableMetricItem,
     ConfigItem,
     AvailableMetricList,
+    PluginRPCFunctionType,
 )
 
 logger = get_logger(__name__)
@@ -28,8 +29,12 @@ metric_id_to_name = {
 
 
 class Plugin(SourcePlugin):
-    def __init__(self, config):
+    # noinspection PyMissingConstructor
+    def __init__(self, config: Dict, rpc_function: PluginRPCFunctionType):
         self._config = config
+        self._rpc_function = rpc_function
+
+        logger.debug("Got rpc_function: {}", rpc_function)
 
     def get_config_item_name(self) -> str:
         return "channel"
