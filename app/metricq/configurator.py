@@ -23,14 +23,14 @@ import json
 import logging
 import os
 from asyncio import Lock
-from typing import Union, Sequence, Dict
+from typing import Union, Sequence, Dict, Any
 
 from aiohttp import ClientResponseError
 from metricq import ManagementAgent
 from metricq.logging import get_logger
 
 from app.api.models import MetricDatabaseConfiguration
-from app.metricq.source_plugin import SourcePlugin
+from app.metricq.source_plugin import SourcePlugin, EntryPointType
 
 logger = get_logger()
 
@@ -208,7 +208,10 @@ class Configurator(ManagementAgent):
             full_module_name = f"metricq_wizard_plugin_{source_type}"
             if importlib.util.find_spec(full_module_name):
                 plugin_module = importlib.import_module(full_module_name)
-                self._loaded_plugins[source_id] = plugin_module.get_plugin(config)
+                entry_point: EntryPointType = plugin_module.get_plugin
+                self._loaded_plugins[source_id] = entry_point(
+                    config, self._rpc_for_plugins
+                )
             else:
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."
@@ -241,3 +244,21 @@ class Configurator(ManagementAgent):
 
     async def _on_client_configure_response(self, response):
         logger.debug("Client reconfigure completed!")
+
+    async def _rpc_for_plugins(
+        self,
+        routing_key: str,
+        function: str,
+        response_callback: Any = None,
+        timeout: int = 60,
+        **kwargs: Any,
+    ):
+        await self._management_connection_watchdog.established()
+        return await self.rpc(
+            exchange=self._management_exchange,
+            routing_key=routing_key,
+            response_callback=response_callback,
+            timeout=timeout,
+            function=function,
+            **kwargs,
+        )

@@ -19,9 +19,11 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import re
 from abc import ABC, abstractmethod
-from typing import Sequence, Dict, Type, Any, Optional
+from typing import Sequence, Dict, Type, Any, Optional, Callable
 
 import pydantic
+
+PluginRPCFunctionType = Callable[[str, str, Optional[Any], Optional[int], Any], Any]
 
 
 class AddMetricItem(pydantic.BaseModel):
@@ -61,6 +63,10 @@ class ConfigItem(pydantic.BaseModel):
 
 
 class SourcePlugin(ABC):
+    @abstractmethod
+    def __init__(self, config: Dict, rpc_function: PluginRPCFunctionType):
+        raise NotImplementedError
+
     @abstractmethod
     def get_config_item_name(self) -> str:
         raise NotImplementedError
@@ -120,3 +126,6 @@ class SourcePlugin(ABC):
     @abstractmethod
     async def get_config(self) -> Dict:
         raise NotImplementedError
+
+
+EntryPointType = Callable[[Dict, PluginRPCFunctionType], SourcePlugin]
