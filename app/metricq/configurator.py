@@ -136,24 +136,21 @@ class Configurator(ManagementAgent):
     async def update_metric_database_config(
         self, metric_database_configuration: MetricDatabaseConfiguration
     ):
-        metadata = await self.get_metrics(
-            format="object", selector=metric_database_configuration.id
-        )
+        metadata = await self.couchdb_db_metadata[metric_database_configuration.id]
 
-        if metadata and metric_database_configuration.id in metadata:
-            metric_metadata = metadata[metric_database_configuration.id]
-            if metric_metadata.get("historic", False):
+        if metadata:
+            if metadata.get("historic", False):
                 logger.warn("Metric already in a database. Ignoring!")
             else:
                 async with self._get_config_lock(
                     metric_database_configuration.database_id
                 ):
-                    config = await self.get_configs(
-                        selector=metric_database_configuration.database_id
-                    )
-                    if config and metric_database_configuration.database_id in config:
-                        db_config = config[metric_database_configuration.database_id]
-                        if metric_database_configuration.id in db_config["metrics"]:
+                    config = await self.couchdb_db_config[
+                        metric_database_configuration.database_id
+                    ]
+
+                    if config:
+                        if metric_database_configuration.id in config["metrics"]:
                             logger.warn(
                                 f"Metric already configured for database {metric_database_configuration.database_id}. Ignoring!"
                             )
@@ -164,11 +161,11 @@ class Configurator(ManagementAgent):
                                 "interval_max": metric_database_configuration.interval_max.ns,
                                 "interval_factor": metric_database_configuration.interval_factor,
                             }
-                            db_config["metrics"][
+                            config["metrics"][
                                 metric_database_configuration.id
                             ] = metric_config
 
-                            await db_config.save()
+                            await config.save()
                     else:
                         logger.warn("Config for database not found!")
         else:
