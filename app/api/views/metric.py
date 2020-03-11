@@ -55,7 +55,9 @@ async def post_metric_list(request: Request):
     if "requested_metrics" in request_data:
         requested_metrics = request_data.get("requested_metrics", [])
 
-        metric_dict = await client.get_metrics(format="object")
+        metric_dict = await client.get_metrics(
+            format="object", selector=requested_metrics
+        )
         metric_list = []
         for metric_id in requested_metrics:
             if metric_id in metric_dict:
