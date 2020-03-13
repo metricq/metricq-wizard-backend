@@ -57,6 +57,27 @@ async def get_source_list(request: Request):
     return Response(text=json.dumps(source_list), content_type="application/json")
 
 
+@swagger_path("api_doc/get_source.yaml")
+@routes.get("/api/source/{source_id}")
+async def get_source_list(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    config = await configurator.couchdb_db_config[source_id]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    return Response(
+        text=json.dumps(
+            {
+                "id": source_id,
+                "configurable": "type" in config,
+                "type": config.get("type"),
+                "configItemName": source_plugin.get_config_item_name(),
+            }
+        ),
+        content_type="application/json",
+    )
+
+
 @swagger_path("api_doc/get_source_config_items.yaml")
 @routes.get("/api/source/{source_id}/config_items")
 async def get_source_config_items(request: Request):
@@ -210,7 +231,7 @@ async def get_source_edit_global_config_input_form(request: Request):
 
 
 @swagger_path("api_doc/get_source_config.yaml")
-@routes.get("/api/source/{source_id}")
+@routes.get("/api/source/{source_id}/global_config")
 async def get_source_global_config(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
@@ -224,7 +245,7 @@ async def get_source_global_config(request: Request):
 
 
 @swagger_path("api_doc/update_source_config.yaml")
-@routes.post("/api/source/{source_id}")
+@routes.post("/api/source/{source_id}/global_config")
 async def update_source_global_config(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]

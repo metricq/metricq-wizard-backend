@@ -1,0 +1,24 @@
+description: Get configured source
+tags:
+- Sources
+parameters:
+- in: path
+  name: source_id
+  required: true
+  description: id of the source
+responses:
+  '200':
+    description: source object
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id:
+              type: string
+            configurable:
+              type: boolean
+            type:
+              type: string
+            configItemName:
+              type: string
