@@ -93,6 +93,8 @@ async def post_metric_list(request: Request):
 def _get_interval_max_ms(interval_min_ms: int, interval_factor: int) -> int:
     ms_a_day = 24 * 60 * 60e3
     n = int(math.log(ms_a_day / interval_min_ms, interval_factor))
+    if n < 0:
+        n = 0
     if interval_min_ms * (interval_factor ** n) >= ms_a_day:
         return interval_min_ms * (interval_factor ** n)
     return interval_min_ms * (interval_factor ** (n + 1))
