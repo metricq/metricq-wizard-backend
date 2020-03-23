@@ -46,4 +46,4 @@ ENV COUCHDB_PW=$couchdb_pw
 ARG amqp_server=amqp://localhost:5672
 ENV AMQP_SERVER=$amqp_server
 
-CMD [ "/home/metricq/venv/bin/gunicorn", "--bind=127.0.0.1:8000", "--worker-class=aiohttp.GunicornWebWorker", "app.main:create_app" ]
+CMD [ "/home/metricq/venv/bin/gunicorn", "--bind=0.0.0.0:8000", "--worker-class=aiohttp.GunicornWebWorker", "app.main:create_app" ]
