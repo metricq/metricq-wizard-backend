@@ -334,3 +334,19 @@ async def save_source_raw_config(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
+
+
+@routes.post("/api/source/{source_id}/config_options")
+async def get_source_config_options_by_metric(request: Request):
+    source_id = request.match_info["source_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+
+    request_data = await request.json()
+
+    metrics = request_data.get("metrics", [])
+    config_options = await source_plugin.get_config_options(metrics=metrics)
+
+    return Response(
+        text=config_options.json(by_alias=True), content_type="application/json"
+    )
