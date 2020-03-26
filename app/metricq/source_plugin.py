@@ -62,6 +62,21 @@ class ConfigItem(pydantic.BaseModel):
     description: str = ""
 
 
+class ConfigOptions(pydantic.BaseModel):
+    global_config: Sequence[str] = []
+    config_items: Sequence[str] = []
+    metrics: Sequence[str] = []
+
+    affected_metrics_global_config: int = 0
+    affected_metrics_config_items: int = 0
+    affected_metrics_metrics: int = 0
+
+    class Config:
+        @classmethod
+        def alias_generator(cls, string: str) -> str:
+            return re.sub(r"_([a-z])", lambda m: m.group(1).upper(), string)
+
+
 class SourcePlugin(ABC):
     @abstractmethod
     def __init__(self, config: Dict, rpc_function: PluginRPCFunctionType):
@@ -125,6 +140,12 @@ class SourcePlugin(ABC):
 
     @abstractmethod
     async def get_config(self) -> Dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_config_options(
+        self, metrics: Optional[Sequence[str]]
+    ) -> ConfigOptions:
         raise NotImplementedError
 
 

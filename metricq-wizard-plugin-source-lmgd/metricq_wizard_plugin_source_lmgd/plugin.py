@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Sequence
+from typing import Dict, Sequence, Optional
 
 from metricq import get_logger
 
@@ -10,6 +10,7 @@ from app.metricq.source_plugin import (
     ConfigItem,
     AvailableMetricList,
     PluginRPCFunctionType,
+    ConfigOptions,
 )
 
 logger = get_logger(__name__)
@@ -268,3 +269,33 @@ class Plugin(SourcePlugin):
 
     async def get_config(self) -> Dict:
         return self._config
+
+    async def get_config_options(
+        self, metrics: Optional[Sequence[str]]
+    ) -> ConfigOptions:
+        if metrics:
+            # TODO maybe check for metric
+            pass
+
+        config_options = ConfigOptions()
+        config_options.global_config = [
+            "chunk_size",
+            "filter",
+            "sampling_rate",
+            "serial",
+            "connection",
+            "port",
+            "ip",
+            "num_channels",
+            "mode",
+        ]
+        config_options.affected_metrics_global_config = 10
+
+        config_options.config_items = [
+            "name",
+            "coupling",
+            "voltage_range",
+            "current_range",
+        ]
+
+        return config_options
