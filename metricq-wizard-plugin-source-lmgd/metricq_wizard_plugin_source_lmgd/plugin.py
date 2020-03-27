@@ -39,7 +39,7 @@ class Plugin(SourcePlugin):
     def get_config_item_name(self) -> str:
         return "channel"
 
-    def get_configuration_items(self) -> Sequence[ConfigItem]:
+    async def get_configuration_items(self) -> Sequence[ConfigItem]:
         return [
             ConfigItem(id=ci_id, name=channel["name"], description=json.dumps(channel))
             for ci_id, channel in enumerate(self._config["channels"])
