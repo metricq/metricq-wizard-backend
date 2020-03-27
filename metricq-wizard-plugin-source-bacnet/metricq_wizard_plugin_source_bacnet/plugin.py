@@ -35,7 +35,7 @@ class Plugin(SourcePlugin):
         self._rpc = rpc_function
 
     def get_config_item_name(self) -> str:
-        pass
+        return "device"
 
     def get_configuration_items(self) -> Sequence[ConfigItem]:
         pass
@@ -98,4 +98,4 @@ class Plugin(SourcePlugin):
         return data
 
     async def get_config(self) -> Dict:
-        pass
+        return self._config
