@@ -70,7 +70,7 @@ async def get_source_config_items(request: Request):
                 "configItemName": source_plugin.get_config_item_name(),
                 "configItems": [
                     config_item.dict()
-                    for config_item in source_plugin.get_configuration_items()
+                    for config_item in await source_plugin.get_configuration_items()
                 ],
             }
         ),

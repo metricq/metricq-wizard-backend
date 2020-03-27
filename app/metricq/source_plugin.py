@@ -72,7 +72,7 @@ class SourcePlugin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_configuration_items(self) -> Sequence[ConfigItem]:
+    async def get_configuration_items(self) -> Sequence[ConfigItem]:
         raise NotImplementedError
 
     @abstractmethod
