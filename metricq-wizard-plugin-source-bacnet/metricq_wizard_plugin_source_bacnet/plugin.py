@@ -68,14 +68,34 @@ class Plugin(SourcePlugin):
     async def delete_config_item(self, config_item_id: str):
         pass
 
+    # TODO add vendor specific mapping to global config
     async def input_form_edit_global_config(self) -> Dict[str, Dict]:
-        pass
+        return {
+            "bacnetReaderAddress": {"type": "StringField"},
+            "bacnetReaderObjectIdentifier": {"type": "NumberField"},
+            "devicePrefix": {"type": "StringField"},
+        }
 
     async def get_global_config(self) -> Dict:
-        pass
+        return {
+            "bacnetReaderAddress": self._config["bacnetReaderAddress"],
+            "bacnetReaderObjectIdentifier": self._config[
+                "bacnetReaderObjectIdentifier"
+            ],
+            "devicePrefix": self._config.get("devicePrefix", ""),
+        }
 
     async def update_global_config(self, data: Dict) -> Dict:
-        pass
+        if "bacnetReaderAddress" in data:
+            self._config["bacnetReaderAddress"] = data["bacnetReaderAddress"]
+        if "bacnetReaderObjectIdentifier" in data:
+            self._config["bacnetReaderObjectIdentifier"] = int(
+                data["bacnetReaderObjectIdentifier"]
+            )
+        if "devicePrefix" in data:
+            self._config["devicePrefix"] = data["devicePrefix"]
+
+        return data
 
     async def get_config(self) -> Dict:
         pass
