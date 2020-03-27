@@ -17,7 +17,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard-plugin-bacnet.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Sequence, Dict
+import asyncio
+import re
+from typing import Sequence, Dict, Union
+
+from metricq import get_logger
 
 from aiohttp.web_exceptions import HTTPBadRequest
 
@@ -29,6 +33,8 @@ from app.metricq.source_plugin import (
     PluginRPCFunctionType,
 )
 
+logger = get_logger(__name__)
+
 
 class Plugin(SourcePlugin):
     # noinspection PyMissingConstructor
@@ -39,8 +45,43 @@ class Plugin(SourcePlugin):
     def get_config_item_name(self) -> str:
         return "device"
 
-    def get_configuration_items(self) -> Sequence[ConfigItem]:
-        pass
+    async def get_configuration_items(self) -> Sequence[ConfigItem]:
+        # devices_from_source is {"ip": {"device_id": 1234, "device_name": "TRE.BLOB"}}
+        try:
+            devices_from_source = await self._rpc(
+                function="source_bacnet.get_advertised_devices", timeout=10
+            )
+            del devices_from_source["from_token"]
+        except asyncio.exceptions.TimeoutError:
+            logger.error("Getting advertised devices from source bacnet timeouted!")
+            devices_from_source = {}
+        device_ips_from_config = list(self._config["devices"].keys())
+        # device_infos_from_source is {"ip": {"device_id": 1234, "device_name": "TRE.BLOB"}}
+        try:
+            device_infos_from_source = await self._rpc(
+                function="source_bacnet.get_device_name_from_ip",
+                timeout=10,
+                ips=device_ips_from_config,
+            )
+            del device_infos_from_source["from_token"]
+        except asyncio.exceptions.TimeoutError:
+            logger.error("Getting advertised devices from source bacnet timeouted!")
+            device_infos_from_source = {
+                ip: {"device_id": 1234, "device_name": "TRE.BLOB"}
+                for ip in device_ips_from_config
+            }
+
+        devices_from_source.update(device_infos_from_source)
+        prefix = re.compile(self._config.get("devicePrefix", ".*"))
+        return [
+            ConfigItem(
+                id=ip,
+                name=info["device_name"],
+                description=f"IP: {ip}, device identifier: {info['device_id']}",
+            )
+            for ip, info in devices_from_source.items()
+            if prefix.fullmatch(info["device_name"])
+        ]
 
     async def get_metrics_for_config_item(
         self, config_item_id: str
@@ -53,13 +94,22 @@ class Plugin(SourcePlugin):
         pass
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
-        pass
+        return {
+            "deviceId": {"type": "NumberField"},
+            "deviceIp": {"type": "StringField"},
+            "description": {"type": "StringField"},
+            "metricId": {"type": "StringField"},
+        }
 
     async def add_config_item(self, data: Dict) -> ConfigItem:
         pass
 
     def input_form_edit_config_item(self) -> Dict[str, Dict]:
-        pass
+        return {
+            "deviceIp": {"type": "LabelField"},
+            "description": {"type": "StringField"},
+            "metricId": {"type": "StringField"},
+        }
 
     async def get_config_item(self, config_item_id: str) -> Dict:
         pass
