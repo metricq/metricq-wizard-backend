@@ -19,6 +19,8 @@
 # along with metricq-wizard-plugin-bacnet.  If not, see <http://www.gnu.org/licenses/>.
 from typing import Sequence, Dict
 
+from aiohttp.web_exceptions import HTTPBadRequest
+
 from app.metricq.source_plugin import (
     SourcePlugin,
     AddMetricItem,
@@ -68,14 +70,93 @@ class Plugin(SourcePlugin):
     async def delete_config_item(self, config_item_id: str):
         pass
 
+    # region global config
+
     async def input_form_edit_global_config(self) -> Dict[str, Dict]:
-        pass
+        return {
+            "bacnetReaderAddress": {
+                "type": "StringField",
+                "label": "IP address of the BACnet source in CIDR notation",
+            },
+            "bacnetReaderObjectIdentifier": {
+                "type": "NumberField",
+                "label": "Object identifier for the source as a BACnet device",
+            },
+            "discoverObjectTypeFilter": {
+                "type": "StringField",
+                "label": "Comma separated list of BACnet object types, which will be discovered for a device and show up in the devices metric list",
+            },
+            "vendorSpecificDescriptionSubstitutions": {
+                "type": "JSONField",
+                "label": "Replacements for matching parts of BACnet descriptions (partial replacement)",
+            },
+            "vendorSpecificNameSubstitutions": {
+                "type": "JSONField",
+                "label": "Replacements for matching parts of BACnet names (partial replacement)",
+            },
+            "vendorSpecificMapping": {
+                "type": "JSONField",
+                "label": "Replacements for matching BACnet names and descriptions (whole value only)",
+            },
+        }
 
     async def get_global_config(self) -> Dict:
-        pass
+        return {
+            "bacnetReaderAddress": self._config["bacnetReaderAddress"],
+            "bacnetReaderObjectIdentifier": self._config[
+                "bacnetReaderObjectIdentifier"
+            ],
+            "discoverObjectTypeFilter": ",".join(
+                self._config.get("discoverObjectTypeFilter", [])
+            ),
+            "vendorSpecificDescriptionSubstitutions": self._config.get(
+                "vendorSpecificDescriptionSubstitutions", ""
+            ),
+            "vendorSpecificNameSubstitutions": self._config.get(
+                "vendorSpecificNameSubstitutions", ""
+            ),
+            "vendorSpecificMapping": self._config.get("vendorSpecificMapping", ""),
+        }
 
     async def update_global_config(self, data: Dict) -> Dict:
-        pass
+        if "bacnetReaderAddress" in data:
+            self._config["bacnetReaderAddress"] = data["bacnetReaderAddress"]
+        if "bacnetReaderObjectIdentifier" in data:
+            self._config["bacnetReaderObjectIdentifier"] = int(
+                data["bacnetReaderObjectIdentifier"]
+            )
+        if "discoverObjectTypeFilter" in data:
+            self._config["discoverObjectTypeFilter"] = (
+                data["discoverObjectTypeFilter"].replace(" ", "").split(",")
+            )
+        if "vendorSpecificDescriptionSubstitutions" in data:
+            if isinstance(data["vendorSpecificDescriptionSubstitutions"], dict):
+                self._config["vendorSpecificDescriptionSubstitutions"] = data[
+                    "vendorSpecificDescriptionSubstitutions"
+                ]
+            else:
+                raise HTTPBadRequest(
+                    reason="vendorSpecificDescriptionSubstitutions not a dict!"
+                )
+
+        if "vendorSpecificNameSubstitutions" in data:
+            if isinstance(data["vendorSpecificNameSubstitutions"], dict):
+                self._config["vendorSpecificNameSubstitutions"] = data[
+                    "vendorSpecificNameSubstitutions"
+                ]
+            else:
+                raise HTTPBadRequest(
+                    reason="vendorSpecificNameSubstitutions not a dict!"
+                )
+        if "vendorSpecificMapping" in data:
+            if isinstance(data["vendorSpecificMapping"], dict):
+                self._config["vendorSpecificMapping"] = data["vendorSpecificMapping"]
+            else:
+                raise HTTPBadRequest(reason="vendorSpecificMapping not a dict!")
+
+        return data
+
+    # endregion
 
     async def get_config(self) -> Dict:
         return self._config
