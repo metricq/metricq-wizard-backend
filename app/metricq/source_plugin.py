@@ -23,7 +23,7 @@ from typing import Sequence, Dict, Type, Any, Optional, Callable
 
 import pydantic
 
-PluginRPCFunctionType = Callable[[str, str, Optional[Any], Optional[int], Any], Any]
+PluginRPCFunctionType = Callable[[str, Optional[Any], Optional[int], Any], Any]
 
 
 class AddMetricItem(pydantic.BaseModel):
