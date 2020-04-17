@@ -19,7 +19,8 @@
 # along with metricq-wizard-plugin-bacnet.  If not, see <http://www.gnu.org/licenses/>.
 import asyncio
 import re
-from typing import Sequence, Dict, Union
+from string import Template
+from typing import Sequence, Dict, Union, List
 
 from metricq import get_logger
 
@@ -29,9 +30,22 @@ from app.metricq.source_plugin import (
     ConfigItem,
     AvailableMetricList,
     PluginRPCFunctionType,
+    AvailableMetricItem,
 )
 
 logger = get_logger(__name__)
+
+
+def unpack_range(range_str: str) -> List[int]:
+    ret = []
+    for r in range_str.split(","):
+        if "-" in r:
+            start, stop = r.split("-")
+            for i in range(int(start), int(stop) + 1):
+                ret.append(i)
+        else:
+            ret.append(int(r))
+    return ret
 
 
 class Plugin(SourcePlugin):
@@ -82,7 +96,93 @@ class Plugin(SourcePlugin):
     async def get_metrics_for_config_item(
         self, config_item_id: str
     ) -> AvailableMetricList:
-        pass
+        try:
+            object_list_from_source = await self._rpc(
+                function="source_bacnet.get_object_list_with_info",
+                timeout=10,
+                ip=config_item_id,
+            )
+        except asyncio.exceptions.TimeoutError:
+            logger.error("Getting advertised devices from source bacnet timeouted!")
+            object_list_from_source = {}
+
+        previous_object_configurations = {}
+        for object_group in self._config["devices"][config_item_id]["objectGroups"]:
+            previous_object_configurations[object_group["objectType"]] = {}
+            for object_instance in unpack_range(object_group["objectInstance"]):
+                previous_object_configurations[object_group["objectType"]][
+                    object_instance
+                ] = {"active": True, "interval": object_group["interval"]}
+
+        metric_id_template = Template(
+            self._config["devices"][config_item_id]["metricId"]
+        )
+        description_template = Template(
+            self._config["devices"][config_item_id].get(
+                "description", "$objectDescription"
+            )
+        )
+
+        available_metric_items = []
+        for object_identifier in object_list_from_source:
+            object_type, object_instance = object_identifier.split(",")
+
+            object_info = object_list_from_source[object_identifier]
+
+            metric_name = (
+                metric_id_template.safe_substitute(
+                    {
+                        "objectName": object_info["objectName"],
+                        # TODO "deviceName": device_name
+                    }
+                )
+                .replace("'", ".")
+                .replace("`", ".")
+                .replace("´", ".")
+                .replace(" ", "")
+            )
+            description = (
+                description_template.safe_substitute(
+                    {
+                        "objectName": object_info["objectName"],
+                        "objectDescription": object_info["description"],
+                        # TODO    "deviceName": device_name,
+                        # TODO    "deviceDescription": device_info["description"],
+                    }
+                )
+                .replace("'", ".")
+                .replace("`", ".")
+                .replace("´", ".")
+            )
+            interval = (
+                previous_object_configurations.get(object_type, {})
+                .get(object_instance, {})
+                .get("interval", 1000)
+            )
+
+            custom_columns = {
+                "metric_name": {"_": {"type": "LabelField", "value": metric_name}},
+                "interval": {"_": {"type": "NumberField", "value": f"{interval}"}},
+                "object_type": {"_": {"type": "LabelField", "value": object_type}},
+                "description": {"_": {"type": "LabelField", "value": description}},
+            }
+
+            available_metric_items.append(
+                AvailableMetricItem(
+                    id=object_identifier,
+                    custom_columns=custom_columns,
+                    is_active=previous_object_configurations.get(object_type, {})
+                    .get(object_instance, {})
+                    .get("active", False),
+                )
+            )
+        columns = {
+            "metric_name": "Metric Name",
+            "interval": "Interval",
+            "object_type": "Object Type",
+            "description": "Description",
+        }
+        return AvailableMetricList(columns=columns, metrics=available_metric_items)
 
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
