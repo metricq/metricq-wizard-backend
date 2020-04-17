@@ -187,6 +187,7 @@ class Plugin(SourcePlugin):
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
     ) -> Sequence[str]:
+        # TODO save selected objects, grouped by interval and object type
         pass
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
@@ -198,6 +199,7 @@ class Plugin(SourcePlugin):
         }
 
     async def add_config_item(self, data: Dict) -> ConfigItem:
+        # TODO should this be possible?
         pass
 
     def input_form_edit_config_item(self) -> Dict[str, Dict]:
@@ -208,12 +210,15 @@ class Plugin(SourcePlugin):
         }
 
     async def get_config_item(self, config_item_id: str) -> Dict:
+        # TODO make metric_id and description template editable
         pass
 
     async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
+        # TODO make metric_id and description template editable
         pass
 
     async def delete_config_item(self, config_item_id: str):
+        # TODO should this be possible?
         pass
 
     # TODO add vendor specific mapping to global config
