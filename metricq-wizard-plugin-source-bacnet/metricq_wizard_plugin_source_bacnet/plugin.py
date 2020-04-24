@@ -275,12 +275,27 @@ class Plugin(SourcePlugin):
         }
 
     async def get_config_item(self, config_item_id: str) -> Dict:
-        # TODO make metric_id and description template editable
-        pass
+        return {
+            "deviceIp": config_item_id,
+            "metricId": self._config["devices"][config_item_id]["metricId"],
+            "description": self._config["devices"][config_item_id].get("description"),
+        }
 
     async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
-        # TODO make metric_id and description template editable
-        pass
+        if "metricId" in data and data["metricId"]:
+            self._config["devices"][config_item_id]["metricId"] = data["metricId"]
+
+        if "description" in data and data["description"]:
+            self._config["devices"][config_item_id]["description"] = data["description"]
+
+        # TODO get info
+        info = {"device_name": "TODO", "device_id": "TODO"}
+
+        return ConfigItem(
+            id=config_item_id,
+            name=info["device_name"],
+            description=f"IP: {config_item_id}, device identifier: {info['device_id']}",
+        )
 
     async def delete_config_item(self, config_item_id: str):
         # TODO should this be possible?
