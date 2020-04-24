@@ -130,7 +130,7 @@ class Plugin(SourcePlugin):
 
         available_metric_items = []
         for object_identifier in object_list_from_source:
-            object_type, object_instance = object_identifier.split(",")
+            object_type, object_instance = object_identifier.split("-")
 
             object_info = object_list_from_source[object_identifier]
 
