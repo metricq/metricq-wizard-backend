@@ -53,6 +53,7 @@ class Plugin(SourcePlugin):
     def __init__(self, config: Dict, rpc_function: PluginRPCFunctionType):
         self._config = config
         self._rpc = rpc_function
+        self._object_info_cache = {}
 
     def get_config_item_name(self) -> str:
         return "device"
@@ -105,6 +106,10 @@ class Plugin(SourcePlugin):
         except asyncio.exceptions.TimeoutError:
             logger.error("Getting advertised devices from source bacnet timeouted!")
             object_list_from_source = {}
+
+        device_object_info_cache = self._object_info_cache.get(config_item_id, {})
+        device_object_info_cache.update(object_list_from_source)
+        self._object_info_cache[config_item_id] = device_object_info_cache
 
         previous_object_configurations = {}
         for object_group in self._config["devices"][config_item_id]["objectGroups"]:
