@@ -82,7 +82,12 @@ class Plugin(SourcePlugin):
         except asyncio.exceptions.TimeoutError:
             logger.error("Getting advertised devices from source bacnet timeouted!")
             device_infos_from_source = {
-                ip: {"device_id": 1234, "device_name": "TRE.BLOB"}
+                ip: {
+                    "device_id": self._config["devices"][ip].get(
+                        "deviceIdentifier", "N/A"
+                    ),
+                    "device_name": "N/A",
+                }
                 for ip in device_ips_from_config
             }
 
@@ -360,32 +365,137 @@ class Plugin(SourcePlugin):
 
         return list(created_metrics)
 
+    # region config item modification
+
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
-            "deviceId": {"type": "NumberField"},
-            "deviceIp": {"type": "StringField"},
-            "description": {"type": "StringField"},
-            "metricId": {"type": "StringField"},
+            "deviceIp": {
+                "type": "StringField",
+                "label": "IP of the BACnet device (required)",
+            },
+            "metricId": {
+                "type": "StringField",
+                "label": "Template for metric IDs (required, supported placeholders: $objectName, $deviceName)",
+            },
+            "deviceId": {
+                "type": "NumberField",
+                "label": "Optional object Identifier of the BACnet device (produces warning in source if mismatch with ID of the device at IP)",
+            },
+            "description": {
+                "type": "StringField",
+                "label": "Template for metric descritptions (supported placeholders: $objectName, $objectDescription, $deviceName, $deviceDescription)",
+            },
+            "chunkSize": {
+                "type": "NumberField",
+                "label": "Optional count of requests per BACnet multi request",
+            },
         }
 
     async def add_config_item(self, data: Dict) -> ConfigItem:
-        pass
+        if (
+            "metricId" not in data
+            or not data["metricId"]
+            or "deviceIp" not in data
+            or not data["deviceIp"]
+        ):
+            raise HTTPBadRequest(reason="deviceIp and metricId are required!")
+
+        if data["deviceIp"] in self._config["devices"]:
+            raise HTTPBadRequest(
+                reason=f"device with ip {data['deviceIp']} already exists!"
+            )
+
+        new_config_item = {"metricId": data["metricId"], "objectGroups": []}
+
+        if "deviceId" in data and data["deviceId"]:
+            new_config_item["deviceIdentifier"] = data["deviceId"]
+
+        if "description" in data and data["description"]:
+            new_config_item["description"] = data["description"]
+
+        if "chunkSize" in data and data["chunkSize"]:
+            new_config_item["chunkSize"] = int(data["chunkSize"])
+
+        self._config["devices"][data["deviceIp"]] = new_config_item
+
+        # TODO get info
+        info = {
+            "device_name": "TODO",
+            "device_id": new_config_item.get("deviceIdentifier", "TODO"),
+        }
+
+        return ConfigItem(
+            id=data["deviceIp"],
+            name=info["device_name"],
+            description=f"IP: {data['deviceIp']}, device identifier: {info['device_id']}",
+        )
 
     def input_form_edit_config_item(self) -> Dict[str, Dict]:
         return {
             "deviceIp": {"type": "LabelField"},
-            "description": {"type": "StringField"},
-            "metricId": {"type": "StringField"},
+            "metricId": {
+                "type": "StringField",
+                "label": "Template for metric IDs (supported placeholders: $objectName, $deviceName)",
+            },
+            "deviceId": {
+                "type": "NumberField",
+                "label": "Object Identifier of the BACnet device (optional, produces warning in source if mismatch with ID of the device at IP)",
+            },
+            "description": {
+                "type": "StringField",
+                "label": "Template for metric descritptions (optional, supported placeholders: $objectName, $objectDescription, $deviceName, $deviceDescription)",
+            },
+            "chunkSize": {
+                "type": "NumberField",
+                "label": "Count of requests per BACnet multi request (optional)",
+            },
         }
 
     async def get_config_item(self, config_item_id: str) -> Dict:
-        pass
+        return {
+            "deviceIp": f"Device IP: {config_item_id}",
+            "metricId": self._config["devices"][config_item_id]["metricId"],
+            "deviceId": self._config["devices"][config_item_id].get("deviceIdentifier"),
+            "description": self._config["devices"][config_item_id].get("description"),
+            "chunkSize": self._config["devices"][config_item_id].get("chunkSize"),
+        }
 
     async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
-        pass
+        if "metricId" in data and data["metricId"]:
+            self._config["devices"][config_item_id]["metricId"] = data["metricId"]
+
+        if "deviceId" in data and data["deviceId"]:
+            self._config["devices"][config_item_id]["deviceIdentifier"] = data[
+                "deviceId"
+            ]
+
+        if "description" in data and data["description"]:
+            self._config["devices"][config_item_id]["description"] = data["description"]
+
+        if "chunkSize" in data and data["chunkSize"]:
+            self._config["devices"][config_item_id]["chunkSize"] = int(
+                data["chunkSize"]
+            )
+
+        # TODO get info
+        info = {
+            "device_name": "TODO",
+            "device_id": self._config["devices"][config_item_id].get(
+                "deviceIdentifier", "TODO"
+            ),
+        }
+
+        return ConfigItem(
+            id=config_item_id,
+            name=info["device_name"],
+            description=f"IP: {config_item_id}, device identifier: {info['device_id']}",
+        )
 
     async def delete_config_item(self, config_item_id: str):
+        # TODO should this be possible?
         pass
+
+    # endregion
 
     # region global config
 
