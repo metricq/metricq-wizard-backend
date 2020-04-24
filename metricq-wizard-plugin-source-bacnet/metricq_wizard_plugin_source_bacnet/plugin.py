@@ -208,9 +208,95 @@ class Plugin(SourcePlugin):
         return AvailableMetricList(columns=columns, metrics=available_metric_items)
 
     async def add_metrics_for_config_item(
-        self, config_item_id: str, metrics: Sequence[AddMetricItem]
+        self,
+        config_item_id: str,
+        metrics: Sequence[AddMetricItem],
+        not_selected_metric_ids: Sequence[str],
     ) -> Sequence[str]:
-        pass
+        object_groups = self._config["devices"][config_item_id]["objectGroups"]
+        device_object_info_cache = self._object_info_cache.get(config_item_id, {})
+        metric_id_template = Template(
+            self._config["devices"][config_item_id]["metricId"]
+        )
+
+        # Get old metric ids from config
+        old_metrics = []
+        for object_group in object_groups:
+            object_type = object_group["objectType"]
+            for object_instance in unpack_range(object_group["objectInstance"]):
+                metric_name = (
+                    metric_id_template.safe_substitute(
+                        {
+                            "objectName": device_object_info_cache.get(
+                                "{}-{}".format(object_type, object_instance), {}
+                            ).get("objectName"),
+                            # TODO "deviceName": device_name
+                        }
+                    )
+                    .replace("'", ".")
+                    .replace("`", ".")
+                    .replace("´", ".")
+                    .replace(" ", "")
+                )
+                old_metrics.append(metric_name)
+
+        # Generate new config
+        new_metrics = []
+        new_metrics_grouped = {}
+        new_metrics_ids = []
+        for metric in metrics:
+            object_type, object_instance = metric.id.split("-")
+            interval = int(metric.custom_columns_values["interval"]["_"])
+            metric_name = metric.custom_columns_values["metric_name"]["_"]
+
+            new_metrics.append(metric_name)
+            new_metrics_ids.append(metric.id)
+
+            object_type_group = new_metrics_grouped.get(object_type, {})
+            object_instance_list = object_type_group.get(interval, [])
+            object_instance_list.append(object_instance)
+            object_type_group[interval] = object_instance_list
+            new_metrics_grouped[object_type] = object_type_group
+
+        for object_group in self._config["devices"][config_item_id]["objectGroups"]:
+            object_type = object_group["objectType"]
+            interval = object_group["interval"]
+
+            object_type_group = new_metrics_grouped.get(object_type, {})
+            object_instance_list = object_type_group.get(interval, [])
+
+            for object_instance in unpack_range(object_group["objectInstance"]):
+                object_identifier = "{}-{}".format(object_type, object_instance)
+                if (
+                    object_identifier not in not_selected_metric_ids
+                    and object_identifier not in new_metrics_ids
+                ):
+                    object_instance_list.append(str(object_instance))
+
+            object_type_group[interval] = object_instance_list
+            new_metrics_grouped[object_type] = object_type_group
+
+        new_object_groups = []
+        for object_type in new_metrics_grouped:
+            for interval in new_metrics_grouped[object_type]:
+                if new_metrics_grouped[object_type][interval]:
+                    # only add non-empty lists
+                    new_object_groups.append(
+                        {
+                            "objectType": object_type,
+                            "interval": interval,
+                            "objectInstance": ",".join(
+                                new_metrics_grouped[object_type][interval]
+                            ),
+                        }
+                    )
+
+        self._config["devices"][config_item_id]["objectGroups"] = new_object_groups
+
+        # Get diff of metrics
+        created_metrics = set(new_metrics) - set(old_metrics)
+
+        return list(created_metrics)
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
