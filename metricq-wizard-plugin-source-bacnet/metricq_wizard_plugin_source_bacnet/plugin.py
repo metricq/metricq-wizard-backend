@@ -192,8 +192,68 @@ class Plugin(SourcePlugin):
     async def add_metrics_for_config_item(
         self, config_item_id: str, metrics: Sequence[AddMetricItem]
     ) -> Sequence[str]:
-        # TODO save selected objects, grouped by interval and object type
-        pass
+        object_groups = self._config["devices"][config_item_id]["objectGroups"]
+        device_object_info_cache = self._object_info_cache.get(config_item_id, {})
+        metric_id_template = Template(
+            self._config["devices"][config_item_id]["metricId"]
+        )
+
+        # Get old metric ids from config
+        old_metrics = []
+        for object_group in object_groups:
+            object_type = object_group["objectType"]
+            for object_instance in unpack_range(object_group["objectInstance"]):
+                metric_name = (
+                    metric_id_template.safe_substitute(
+                        {
+                            "objectName": device_object_info_cache.get(
+                                "{}-{}".format(object_type, object_instance)
+                            )["objectName"],
+                            # TODO "deviceName": device_name
+                        }
+                    )
+                    .replace("'", ".")
+                    .replace("`", ".")
+                    .replace("´", ".")
+                    .replace(" ", "")
+                )
+                old_metrics.append(metric_name)
+
+        # Generate new config
+        new_metrics = []
+        new_metrics_grouped = {}
+        for metric in metrics:
+            object_type, object_instance = metric.id.split("-")
+            interval = metric.custom_columns_values["interval"]["_"]
+            metric_name = metric.custom_columns_values["metric_name"]["_"]
+
+            new_metrics.append(metric_name)
+
+            object_type_group = new_metrics_grouped.get(object_type, {})
+            object_instance_list = object_type_group.get(interval, [])
+            object_instance_list.append(object_instance)
+            object_type_group[interval] = object_instance_list
+            new_metrics_grouped[object_type] = object_type_group
+
+        new_object_groups = []
+        for object_type in new_metrics_grouped:
+            for interval in new_metrics_grouped[object_type]:
+                new_object_groups.append(
+                    {
+                        "objectType": object_type,
+                        "interval": interval,
+                        "objectInstance": ",".join(
+                            new_metrics_grouped[object_type][interval]
+                        ),
+                    }
+                )
+
+        self._config["devices"][config_item_id]["objectGroups"] = new_object_groups
+
+        # Get diff of metrics
+        created_metrics = set(new_metrics) - set(old_metrics)
+
+        return list(created_metrics)
 
     def input_form_add_config_item(self) -> Dict[str, Dict]:
         return {
