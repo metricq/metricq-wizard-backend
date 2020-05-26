@@ -64,6 +64,15 @@ class Configurator(ManagementAgent):
         self._loaded_plugins: Dict[str, SourcePlugin] = {}
         self._config_locks = {}
 
+    async def connect(self):
+        await super().connect()
+
+        await self.management_rpc_queue.bind(
+            exchange=self._management_broadcast_exchange, routing_key="#"
+        )
+
+        await self.rpc_consume()
+
     async def fetch_metadata(self, metric_ids):
         return {
             doc.id: doc.data
