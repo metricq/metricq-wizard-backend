@@ -218,7 +218,7 @@ class Configurator(ManagementAgent):
         if source_id in self._loaded_plugins:
             return self._loaded_plugins[source_id]
 
-        logger.error("Plugin instance for source {source_id} not found.")
+        logger.error(f"Plugin instance for source {source_id} not found.")
         return None
 
     async def save_source_config(self, source_id):
@@ -250,9 +250,10 @@ class Configurator(ManagementAgent):
             **kwargs: Any,
         ):
             await self._management_connection_watchdog.established()
+            logger.debug(f"Routing key for rpc is {routing_key}")
             return await self.rpc(
                 exchange=self._management_channel.default_exchange,
-                routing_key=routing_key,
+                routing_key=f"{routing_key}-rpc",
                 response_callback=response_callback,
                 timeout=timeout,
                 function=function,
