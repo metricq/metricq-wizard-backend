@@ -64,6 +64,7 @@ class Plugin(SourcePlugin):
             devices_from_source = await self._rpc(
                 function="source_bacnet.get_advertised_devices", timeout=10
             )
+            del devices_from_source["from_token"]
         except asyncio.exceptions.TimeoutError:
             logger.error("Getting advertised devices from source bacnet timeouted!")
             devices_from_source = {}
@@ -75,6 +76,7 @@ class Plugin(SourcePlugin):
                 timeout=10,
                 ips=device_ips_from_config,
             )
+            del device_infos_from_source["from_token"]
         except asyncio.exceptions.TimeoutError:
             logger.error("Getting advertised devices from source bacnet timeouted!")
             device_infos_from_source = {
