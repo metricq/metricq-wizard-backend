@@ -105,6 +105,7 @@ class Plugin(SourcePlugin):
                 timeout=10,
                 ip=config_item_id,
             )
+            del object_list_from_source["from_token"]
         except asyncio.exceptions.TimeoutError:
             logger.error("Getting advertised devices from source bacnet timeouted!")
             object_list_from_source = {}
@@ -114,20 +115,23 @@ class Plugin(SourcePlugin):
         self._object_info_cache[config_item_id] = device_object_info_cache
 
         previous_object_configurations = {}
-        for object_group in self._config["devices"][config_item_id]["objectGroups"]:
-            previous_object_configurations[object_group["objectType"]] = {}
-            for object_instance in unpack_range(object_group["objectInstance"]):
-                previous_object_configurations[object_group["objectType"]][
-                    object_instance
-                ] = {"active": True, "interval": object_group["interval"]}
+        if config_item_id in self._config["devices"]:
+            for object_group in self._config["devices"][config_item_id]["objectGroups"]:
+                previous_object_configurations[object_group["objectType"]] = {}
+                for object_instance in unpack_range(object_group["objectInstance"]):
+                    previous_object_configurations[object_group["objectType"]][
+                        object_instance
+                    ] = {"active": True, "interval": object_group["interval"]}
 
         metric_id_template = Template(
-            self._config["devices"][config_item_id]["metricId"]
+            self._config["devices"]
+            .get(config_item_id, {})
+            .get("metricId", "$objectName")
         )
         description_template = Template(
-            self._config["devices"][config_item_id].get(
-                "description", "$objectDescription"
-            )
+            self._config["devices"]
+            .get(config_item_id, {})
+            .get("description", "$objectDescription")
         )
 
         available_metric_items = []
@@ -135,6 +139,9 @@ class Plugin(SourcePlugin):
             object_type, object_instance = object_identifier.split("-")
 
             object_info = object_list_from_source[object_identifier]
+
+            if not object_info:
+                continue
 
             metric_name = (
                 metric_id_template.safe_substitute(
@@ -174,12 +181,16 @@ class Plugin(SourcePlugin):
                 "description": {"_": {"type": "LabelField", "value": description}},
             }
 
+            logger.debug(
+                f"{object_identifier}: {previous_object_configurations.get(object_type, {}).get(object_instance, {})}"
+            )
+
             available_metric_items.append(
                 AvailableMetricItem(
                     id=object_identifier,
                     custom_columns=custom_columns,
                     is_active=previous_object_configurations.get(object_type, {})
-                    .get(object_instance, {})
+                    .get(int(object_instance), {})
                     .get("active", False),
                 )
             )
