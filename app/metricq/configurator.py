@@ -248,8 +248,8 @@ class Configurator(ManagementAgent):
                 **config,
             )
 
-    async def _on_client_configure_response(self, response):
-        logger.debug("Client reconfigure completed!")
+    async def _on_client_configure_response(self, **kwargs):
+        logger.debug(f"Client reconfigure completed! kwargs are: {kwargs}")
 
     def _rpc_for_plugins(self, routing_key: str):
         async def rpc_function(
