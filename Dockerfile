@@ -1,30 +1,18 @@
-FROM python:3-slim AS builder
+FROM metricq-python:latest AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
-RUN useradd -m metricq
-RUN pip install virtualenv
-RUN apt-get update && apt-get install -y git protobuf-compiler
+USER root
+RUN apt-get update && apt-get install -y git
 
 USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
-
-WORKDIR /home/metricq
-RUN virtualenv venv
-
-RUN git clone https://github.com/metricq/metricq-python metricq
-
-WORKDIR /home/metricq/metricq
-RUN git checkout experimental-management-baseclass
-RUN . /home/metricq/venv/bin/activate && pip install .
 
 WORKDIR /home/metricq/wizard
 RUN . /home/metricq/venv/bin/activate && pip install -r requirements.txt
 RUN . /home/metricq/venv/bin/activate && pip install gunicorn
 
-FROM python:3-slim
+FROM metricq-python:latest
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
-
-RUN useradd -m metricq
 
 USER metricq
 COPY --from=builder --chown=metricq:metricq /home/metricq/venv /home/metricq/venv
