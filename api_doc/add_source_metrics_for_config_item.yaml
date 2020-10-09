@@ -20,6 +20,11 @@ requestBody:
             type: array
             items:
               $ref: "#/components/schemas/AddMetricItem"
+          notSelectedMetricIds:
+            description: IDs of the metrics that are not selected
+            type: array
+            items:
+              type: string
 responses:
   '200':
     description: name of the new active metrics
