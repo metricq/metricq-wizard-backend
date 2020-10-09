@@ -104,7 +104,10 @@ class Plugin(SourcePlugin):
         return AvailableMetricList(columns=columns, metrics=available_metric_items)
 
     async def add_metrics_for_config_item(
-        self, config_item_id: str, metrics: Sequence[AddMetricItem]
+        self,
+        config_item_id: str,
+        metrics: Sequence[AddMetricItem],
+        not_selected_metric_ids: Sequence[str],
     ) -> Sequence[str]:
         ci_id = int(config_item_id)
         channel_config = self._config["channels"][ci_id]

@@ -119,8 +119,12 @@ async def add_source_metrics_for_config_item(request: Request):
     if "metrics" not in request_data:
         raise HTTPBadRequest
 
+    not_selected_metric_ids = request_data.get("notSelectedMetricIds", [])
+
     new_metrics = await source_plugin.add_metrics_for_config_item(
-        config_item_id, [AddMetricItem(**metric) for metric in request_data["metrics"]]
+        config_item_id,
+        [AddMetricItem(**metric) for metric in request_data["metrics"]],
+        not_selected_metric_ids,
     )
 
     return Response(
