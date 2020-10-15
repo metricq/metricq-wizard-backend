@@ -203,7 +203,10 @@ class Plugin(SourcePlugin):
         return AvailableMetricList(columns=columns, metrics=available_metric_items)
 
     async def add_metrics_for_config_item(
-        self, config_item_id: str, metrics: Sequence[AddMetricItem]
+        self,
+        config_item_id: str,
+        metrics: Sequence[AddMetricItem],
+        not_selected_metric_ids: Sequence[str],
     ) -> Sequence[str]:
         object_groups = self._config["devices"][config_item_id]["objectGroups"]
         device_object_info_cache = self._object_info_cache.get(config_item_id, {})
@@ -220,8 +223,8 @@ class Plugin(SourcePlugin):
                     metric_id_template.safe_substitute(
                         {
                             "objectName": device_object_info_cache.get(
-                                "{}-{}".format(object_type, object_instance)
-                            )["objectName"],
+                                "{}-{}".format(object_type, object_instance), {}
+                            ).get("objectName"),
                             # TODO "deviceName": device_name
                         }
                     )
@@ -235,16 +238,36 @@ class Plugin(SourcePlugin):
         # Generate new config
         new_metrics = []
         new_metrics_grouped = {}
+        new_metrics_ids = []
         for metric in metrics:
             object_type, object_instance = metric.id.split("-")
-            interval = metric.custom_columns_values["interval"]["_"]
+            interval = int(metric.custom_columns_values["interval"]["_"])
             metric_name = metric.custom_columns_values["metric_name"]["_"]
 
             new_metrics.append(metric_name)
+            new_metrics_ids.append(metric.id)
 
             object_type_group = new_metrics_grouped.get(object_type, {})
             object_instance_list = object_type_group.get(interval, [])
             object_instance_list.append(object_instance)
+            object_type_group[interval] = object_instance_list
+            new_metrics_grouped[object_type] = object_type_group
+
+        for object_group in self._config["devices"][config_item_id]["objectGroups"]:
+            object_type = object_group["objectType"]
+            interval = object_group["interval"]
+
+            object_type_group = new_metrics_grouped.get(object_type, {})
+            object_instance_list = object_type_group.get(interval, [])
+
+            for object_instance in unpack_range(object_group["objectInstance"]):
+                object_identifier = "{}-{}".format(object_type, object_instance)
+                if (
+                    object_identifier not in not_selected_metric_ids
+                    and object_identifier not in new_metrics_ids
+                ):
+                    object_instance_list.append(str(object_instance))
+
             object_type_group[interval] = object_instance_list
             new_metrics_grouped[object_type] = object_type_group
 
