@@ -2,7 +2,7 @@ FROM metricq-python:latest AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER root
-RUN apt-get update && apt-get install -y git
+RUN apt-get update && apt-get install -y git build-essential
 
 USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
