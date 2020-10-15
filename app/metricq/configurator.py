@@ -215,7 +215,7 @@ class Configurator(Client):
                 plugin_module = importlib.import_module(full_module_name)
                 entry_point: EntryPointType = plugin_module.get_plugin
                 self._loaded_plugins[source_id] = entry_point(
-                    config, self._rpc_for_plugins(routing_key=source_id)
+                    config, self._rpc_for_plugins(client_token=source_id)
                 )
             else:
                 logger.error(
@@ -250,24 +250,25 @@ class Configurator(Client):
     async def _on_client_configure_response(self, **kwargs):
         logger.debug(f"Client reconfigure completed! kwargs are: {kwargs}")
 
+    def _rpc_for_plugins(self, client_token: str):
+        async def rpc_function(
+            function: str,
+            response_callback: Any = None,
+            timeout: int = 60,
+            **kwargs: Any,
+        ):
+            await self._management_connection_watchdog.established()
+            logger.debug(f"Routing key for rpc is {client_token}-rpc")
+            return await super(Client, self).rpc(
+                exchange=self._management_channel.default_exchange,
+                routing_key=f"{client_token}-rpc",
+                response_callback=response_callback,
+                timeout=timeout,
+                function=function,
+                **kwargs,
+            )
 
-    async def _rpc_for_plugins(
-        self,
-        routing_key: str,
-        function: str,
-        response_callback: Any = None,
-        timeout: int = 60,
-        **kwargs: Any,
-    ):
-        await self._management_connection_watchdog.established()
-        return await self.rpc(
-            exchange=self._management_exchange,
-            routing_key=routing_key,
-            response_callback=response_callback,
-            timeout=timeout,
-            function=function,
-            **kwargs,
-        )
+        return rpc_function
 
     async def get_metrics(
         self,
