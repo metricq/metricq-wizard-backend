@@ -17,10 +17,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import json
+
 from itertools import islice
 
 import importlib
 from asyncio import Lock
+from datetime import datetime
 from typing import Union, Sequence, Dict, Any, Optional
 
 from aiocouch import CouchDB, database
@@ -125,19 +128,26 @@ class Configurator(Client):
 
         return configs
 
-    async def set_config(self, token: str, new_config: dict, replace=False):
+    async def set_config(self, token: str, new_config: dict):
         arguments = {"token": token, "config": new_config}
         logger.debug(arguments)
 
         async with self._get_config_lock(token):
 
             config = await self.couchdb_db_config[token]
-            if config:
-                if replace:
-                    self._replace_config(config, new_config)
-                else:
-                    self._update_config(config, new_config)
-                await config.save()
+            if config.exists:
+                with open(
+                    f"config-backup/{token}-{datetime.now().timestamp()}", "w"
+                ) as backup_file:
+                    backup_file.write(json.dumps(config.data))
+
+            for config_key in list(config.keys()):
+                if config_key not in new_config:
+                    del config[config_key]
+
+            config.update(new_config)
+
+            await config.save()
 
         return
 
@@ -186,21 +196,6 @@ class Configurator(Client):
             self._config_locks[token] = config_lock
         return config_lock
 
-    def _update_config(self, doc, config):
-        """Updates keys in doc not reserved for couchdb with values from config"""
-        for key, value in config.items():
-            if not key.startswith("_"):
-                doc[key] = value
-
-    def _replace_config(self, doc, config):
-        """Updates keys in doc not reserved for couchdb with values from config, but also DELETES keys not in config from doc"""
-        doc_keys = [key for key in doc.keys() if not key.startswith("_")]
-        for doc_key in doc_keys:
-            if doc_key not in config:
-                del doc[doc_key]
-
-        self._update_config(doc, config)
-
     async def get_source_plugin(self, source_id) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
         if "type" not in config:
@@ -230,11 +225,8 @@ class Configurator(Client):
         return None
 
     async def save_source_config(self, source_id):
-        async with self._get_config_lock(source_id):
-            source_plugin = await self.get_source_plugin(source_id)
-            config = await self.couchdb_db_config[source_id]
-            self._update_config(config, await source_plugin.get_config())
-            await config.save()
+        source_plugin = await self.get_source_plugin(source_id)
+        await self.set_config(source_id, await source_plugin.get_config())
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
