@@ -224,9 +224,16 @@ class Configurator(Client):
         logger.error(f"Plugin instance for source {source_id} not found.")
         return None
 
-    async def save_source_config(self, source_id):
+    def unload_source_plugin(self, source_id):
+        if source_id in self._loaded_plugins:
+            del self._loaded_plugins[source_id]
+
+    async def save_source_config(self, source_id, unload_plugin=False):
         source_plugin = await self.get_source_plugin(source_id)
         await self.set_config(source_id, await source_plugin.get_config())
+
+        if unload_plugin:
+            self.unload_source_plugin(source_id)
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):

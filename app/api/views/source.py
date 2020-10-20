@@ -248,7 +248,7 @@ async def update_source_global_config(request: Request):
 async def save_source_config(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(source_id=source_id)
+    await configurator.save_source_config(source_id=source_id, unload_plugin=True)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
@@ -273,7 +273,7 @@ async def reconfigure_source(request: Request):
 async def save_config_and_reconfigure_source(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(source_id=source_id)
+    await configurator.save_source_config(source_id=source_id, unload_plugin=True)
     if not request.app["settings"].dry_run:
         await configurator.reconfigure_client(client_id=source_id)
 
