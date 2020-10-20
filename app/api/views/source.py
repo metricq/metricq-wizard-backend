@@ -289,7 +289,9 @@ async def get_source_raw_config(request: Request):
     configurator: Configurator = request.app["metricq_client"]
     config = await configurator.read_config(source_id)
 
-    keys_to_filter = list(filter(lambda k: k.startswith("_"), config.keys()))
+    keys_to_filter = list(
+        filter(lambda k: k.startswith("_") and not k == "_rev", config.keys())
+    )
 
     for key in keys_to_filter:
         del config[key]
@@ -307,12 +309,14 @@ async def save_source_raw_config(request: Request):
 
     request_data = await request.json()
 
-    keys_to_filter = list(filter(lambda k: k.startswith("_"), request_data.keys()))
+    keys_to_filter = list(
+        filter(lambda k: k.startswith("_") and not k == "_rev", request_data.keys())
+    )
 
     for key in keys_to_filter:
         del request_data[key]
 
-    await configurator.set_config(source_id, request_data, replace=True)
+    await configurator.set_config(source_id, request_data)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
