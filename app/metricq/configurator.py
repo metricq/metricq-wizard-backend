@@ -238,7 +238,7 @@ class Configurator(Client):
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
             config = await self.couchdb_db_config[client_id]
-            await self.rpc(
+            await super(Client, self).rpc(
                 function="config",
                 exchange=self._management_channel.default_exchange,
                 routing_key=f"{client_id}-rpc",
