@@ -11,7 +11,7 @@ COPY --chown=metricq:metricq . /home/metricq/wizard
 WORKDIR /home/metricq
 RUN virtualenv venv
 
-RUN git clone https://github.com/metricq/metricq metricq
+RUN git clone https://github.com/metricq/metricq-python metricq
 
 WORKDIR /home/metricq/metricq
 RUN git checkout experimental-management-baseclass

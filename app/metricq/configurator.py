@@ -17,16 +17,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+from itertools import islice
 
 import importlib
-import json
-import logging
-import os
 from asyncio import Lock
-from typing import Union, Sequence, Dict, Any
+from typing import Union, Sequence, Dict, Any, Optional
 
-from aiohttp import ClientResponseError
-from metricq import ManagementAgent
+from aiocouch import CouchDB, database
+
+from metricq import Client
 from metricq.logging import get_logger
 
 from app.api.models import MetricDatabaseConfiguration
@@ -42,7 +41,7 @@ logger.setLevel("INFO")
 # )
 
 
-class Configurator(ManagementAgent):
+class Configurator(Client):
     def __init__(
         self,
         token,
@@ -55,23 +54,32 @@ class Configurator(ManagementAgent):
         super().__init__(
             token,
             management_url,
-            "",
-            couchdb_url,
-            couchdb_user,
-            couchdb_password,
             event_loop=event_loop,
         )
+        self.couchdb_client: CouchDB = CouchDB(
+            couchdb_url,
+            user=couchdb_user,
+            password=couchdb_password,
+            loop=self.event_loop,
+        )
+
+        self.couchdb_db_config: database.Database = None
+        self.couchdb_db_metadata: database.Database = None
+
         self._loaded_plugins: Dict[str, SourcePlugin] = {}
         self._config_locks = {}
 
     async def connect(self):
-        await super().connect()
-
-        await self.management_rpc_queue.bind(
-            exchange=self._management_broadcast_exchange, routing_key="#"
+        # First, connect to couchdb
+        self.couchdb_db_config = await self.couchdb_client.create(
+            "config", exists_ok=True
+        )
+        self.couchdb_db_metadata = await self.couchdb_client.create(
+            "metadata", exists_ok=True
         )
 
-        await self.rpc_consume()
+        # After that, we do the MetricQ connection stuff
+        await super().connect()
 
     async def fetch_metadata(self, metric_ids):
         return {
@@ -79,17 +87,8 @@ class Configurator(ManagementAgent):
             async for doc in self.couchdb_db_metadata.docs(metric_ids, create=True)
         }
 
-    async def stop(self):
-        logger.debug("closing data channel and connection in manager")
-        await super().stop()
-
     async def read_config(self, token):
-        try:
-            return (await self.couchdb_db_config[token]).data
-        except KeyError:
-            # TODO use aiofile
-            with open(os.path.join(self.config_path, token + ".json"), "r") as f:
-                return json.load(f)
+        return (await self.couchdb_db_config[token]).data
 
     async def get_configs(
         self, selector: Union[str, Sequence[str], None] = None
@@ -251,22 +250,127 @@ class Configurator(ManagementAgent):
     async def _on_client_configure_response(self, **kwargs):
         logger.debug(f"Client reconfigure completed! kwargs are: {kwargs}")
 
-    def _rpc_for_plugins(self, routing_key: str):
-        async def rpc_function(
-            function: str,
-            response_callback: Any = None,
-            timeout: int = 60,
-            **kwargs: Any,
-        ):
-            await self._management_connection_watchdog.established()
-            logger.debug(f"Routing key for rpc is {routing_key}")
-            return await self.rpc(
-                exchange=self._management_channel.default_exchange,
-                routing_key=f"{routing_key}-rpc",
-                response_callback=response_callback,
-                timeout=timeout,
-                function=function,
-                **kwargs,
-            )
+    async def _rpc_for_plugins(
+        self,
+        routing_key: str,
+        function: str,
+        response_callback: Any = None,
+        timeout: int = 60,
+        **kwargs: Any,
+    ):
+        await self._management_connection_watchdog.established()
+        return await self.rpc(
+            exchange=self._management_exchange,
+            routing_key=routing_key,
+            response_callback=response_callback,
+            timeout=timeout,
+            function=function,
+            **kwargs,
+        )
 
-        return rpc_function
+    async def get_metrics(
+        self,
+        selector: Union[str, Sequence[str], None] = None,
+        format: Optional[str] = "array",
+        historic: Optional[bool] = None,
+        timeout: Optional[float] = None,
+        prefix: Optional[str] = None,
+        infix: Optional[str] = None,
+        limit: Optional[int] = None,
+        source: Optional[str] = None,
+    ) -> Union[Sequence[str], Sequence[dict]]:
+        if format not in ("array", "object"):
+            raise AttributeError("unknown format requested: {}".format(format))
+
+        if infix is not None and prefix is not None:
+            raise AttributeError('cannot get_metrics with both "prefix" and "infix"')
+
+        if source is not None and historic is not None:
+            raise AttributeError('cannot get_metrics with both "historic" and "source"')
+
+        selector_dict = dict()
+        if selector is not None:
+            if isinstance(selector, str):
+                selector_dict["_id"] = {"$regex": selector}
+            elif isinstance(selector, list):
+                if len(selector) < 1:
+                    raise ValueError("Empty selector list")
+                if len(selector) == 1:
+                    # That may possibly be faster.
+                    selector_dict["_id"] = selector[0]
+                else:
+                    selector_dict["_id"] = {"$in": selector}
+            else:
+                raise TypeError(
+                    "Invalid selector type: {}, supported: str, list", type(selector)
+                )
+        if historic is not None:
+            if not isinstance(historic, bool):
+                raise AttributeError(
+                    'invalid type for "historic" argument: should be bool, is {}'.format(
+                        type(historic)
+                    )
+                )
+
+        # TODO can this be unified without compromising performance?
+        # Does this even perform well?
+        # ALSO: Async :-[
+        if selector_dict:
+            if historic is not None:
+                selector_dict["historic"] = historic
+            if prefix is not None or infix is not None:
+                raise AttributeError(
+                    'cannot get_metrics with both "selector" and "prefix" or "infix".'
+                )
+            aiter = self.couchdb_db_metadata.find(selector_dict, limit=limit)
+            if format == "array":
+                metrics = [doc["_id"] async for doc in aiter]
+            elif format == "object":
+                metrics = {doc["_id"]: doc.data async for doc in aiter}
+
+        else:  # No selector dict, all *fix / historic filtering
+            request_limit = limit
+            request_params = {}
+            if infix is None:
+                request_prefix = prefix
+                if historic is not None:
+                    endpoint = self.couchdb_db_metadata.view("index", "historic")
+                elif source is not None:
+                    endpoint = self.couchdb_db_metadata.view("index", "source")
+                    request_prefix = None
+                    request_params["key"] = f'"{source}"'
+                else:
+                    endpoint = self.couchdb_db_metadata.all_docs
+            else:
+                request_prefix = infix
+                # These views produce stupid duplicates thus we must filter ourselves and request more
+                # to get enough results. We assume for no more than 6 infix segments on average
+                if limit is not None:
+                    request_limit = 6 * limit
+                if historic is not None:
+                    endpoint = self.couchdb_db_metadata.view("components", "historic")
+                else:
+                    raise NotImplementedError(
+                        "non-historic infix lookup not yet supported"
+                    )
+            if format == "array":
+                metrics = [
+                    key
+                    async for key in endpoint.ids(
+                        prefix=request_prefix, limit=request_limit
+                    )
+                ]
+                if request_limit != limit:
+                    # Object of type islice is not JSON serializable m(
+                    metrics = list(islice(sorted(set(metrics)), limit))
+            elif format == "object":
+                metrics = {
+                    doc["_id"]: doc.data
+                    async for doc in endpoint.docs(
+                        prefix=request_prefix, limit=request_limit, **request_params
+                    )
+                }
+                if request_limit != limit:
+                    metrics = dict(islice(sorted(metrics.items()), limit))
+
+        return metrics
