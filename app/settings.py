@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     token = name
     amqp_server: stricturl(
         tld_required=False, allowed_schemes={"amqp", "amqps"}
-    ) = "amqp://guest:guest@localhost/"
+    ) = "amqp://admin:admin@localhost/"
     couchdb_url: AnyHttpUrl = "http://localhost:5984"
     couchdb_user = "admin"
     couchdb_password = "admin"

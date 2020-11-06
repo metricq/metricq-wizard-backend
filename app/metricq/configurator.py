@@ -210,7 +210,7 @@ class Configurator(Client):
                 plugin_module = importlib.import_module(full_module_name)
                 entry_point: EntryPointType = plugin_module.get_plugin
                 self._loaded_plugins[source_id] = entry_point(
-                    config, self._rpc_for_plugins
+                    config, self._rpc_for_plugins(client_token=source_id)
                 )
             else:
                 logger.error(
@@ -221,17 +221,24 @@ class Configurator(Client):
         if source_id in self._loaded_plugins:
             return self._loaded_plugins[source_id]
 
-        logger.error("Plugin instance for source {source_id} not found.")
+        logger.error(f"Plugin instance for source {source_id} not found.")
         return None
 
-    async def save_source_config(self, source_id):
+    def unload_source_plugin(self, source_id):
+        if source_id in self._loaded_plugins:
+            del self._loaded_plugins[source_id]
+
+    async def save_source_config(self, source_id, unload_plugin=False):
         source_plugin = await self.get_source_plugin(source_id)
         await self.set_config(source_id, await source_plugin.get_config())
+
+        if unload_plugin:
+            self.unload_source_plugin(source_id)
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
             config = await self.couchdb_db_config[client_id]
-            await self.rpc(
+            await super(Client, self).rpc(
                 function="config",
                 exchange=self._management_channel.default_exchange,
                 routing_key=f"{client_id}-rpc",
@@ -242,23 +249,25 @@ class Configurator(Client):
     async def _on_client_configure_response(self, **kwargs):
         logger.debug(f"Client reconfigure completed! kwargs are: {kwargs}")
 
-    async def _rpc_for_plugins(
-        self,
-        routing_key: str,
-        function: str,
-        response_callback: Any = None,
-        timeout: int = 60,
-        **kwargs: Any,
-    ):
-        await self._management_connection_watchdog.established()
-        return await self.rpc(
-            exchange=self._management_exchange,
-            routing_key=routing_key,
-            response_callback=response_callback,
-            timeout=timeout,
-            function=function,
-            **kwargs,
-        )
+    def _rpc_for_plugins(self, client_token: str):
+        async def rpc_function(
+            function: str,
+            response_callback: Any = None,
+            timeout: int = 60,
+            **kwargs: Any,
+        ):
+            await self._management_connection_watchdog.established()
+            logger.debug(f"Routing key for rpc is {client_token}-rpc")
+            return await super(Client, self).rpc(
+                exchange=self._management_channel.default_exchange,
+                routing_key=f"{client_token}-rpc",
+                response_callback=response_callback,
+                timeout=timeout,
+                function=function,
+                **kwargs,
+            )
+
+        return rpc_function
 
     async def get_metrics(
         self,
