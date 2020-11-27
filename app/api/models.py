@@ -17,6 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+from typing import List
 
 import re
 
@@ -70,6 +71,17 @@ class MetricDatabaseConfiguration(BaseModel):
                 f"interval_max ({interval_max})not larger than interval_min ({interval_min})"
             )
         return values
+
+    class Config:
+        json_encoders = {metricq.Timedelta: lambda td: f"{td.ms:.0f}ms"}
+
+        @classmethod
+        def alias_generator(cls, string: str) -> str:
+            return re.sub(r"_([a-z])", lambda m: m.group(1).upper(), string)
+
+
+class MetricDatabaseConfigurations(BaseModel):
+    database_configurations: List[MetricDatabaseConfiguration]
 
     class Config:
         json_encoders = {metricq.Timedelta: lambda td: f"{td.ms:.0f}ms"}

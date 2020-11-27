@@ -25,7 +25,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 
-from app.api.models import MetricDatabaseConfiguration
+from app.api.models import MetricDatabaseConfiguration, MetricDatabaseConfigurations
 from app.metricq import Configurator
 
 logger = metricq.get_logger()
@@ -136,14 +136,14 @@ async def post_metric_database_default_config(request: Request):
 @routes.post("/api/metrics/database")
 async def post_metric_list(request: Request):
     client: Configurator = request.app["metricq_client"]
+    request_data = await request.json()
 
-    data = await request.json()
-    metric_database_configuration = MetricDatabaseConfiguration(**data)
-
-    await client.update_metric_database_config(metric_database_configuration)
+    database_configs = MetricDatabaseConfigurations(**request_data)
+    for db_config in database_configs.database_configurations:
+        await client.update_metric_database_config(db_config)
 
     return Response(
-        text=metric_database_configuration.json(by_alias=True),
+        text=database_configs.json(by_alias=True),
         content_type="application/json",
     )
 
