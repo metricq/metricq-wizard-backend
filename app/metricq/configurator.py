@@ -152,42 +152,54 @@ class Configurator(Client):
         return
 
     async def update_metric_database_config(
-        self, metric_database_configuration: MetricDatabaseConfiguration
+        self, metric_database_configurations: [MetricDatabaseConfiguration]
     ):
-        metadata = await self.couchdb_db_metadata[metric_database_configuration.id]
 
-        if metadata:
-            if metadata.get("historic", False):
-                logger.warn("Metric already in a database. Ignoring!")
-            else:
-                async with self._get_config_lock(
-                    metric_database_configuration.database_id
-                ):
-                    config = await self.couchdb_db_config[
-                        metric_database_configuration.database_id
-                    ]
+        configurations_by_database = {}
+        for config in metric_database_configurations:
+            config_list = configurations_by_database.get(config.database_id, [])
+            config_list.append(config)
+            configurations_by_database[config.database_id] = config_list
 
-                    if config:
-                        if metric_database_configuration.id in config["metrics"]:
-                            logger.warn(
-                                f"Metric already configured for database {metric_database_configuration.database_id}. Ignoring!"
-                            )
+        for database_id in configurations_by_database.keys():
+            async with self._get_config_lock(database_id):
+                config = await self.couchdb_db_config[database_id]
+
+                if config:
+                    for metric_database_configuration in configurations_by_database[
+                        database_id
+                    ]:
+                        metadata = await self.couchdb_db_metadata[
+                            metric_database_configuration.id
+                        ]
+
+                        if metadata:
+                            if metadata.get("historic", False):
+                                logger.warn("Metric already in a database. Ignoring!")
+                            else:
+                                if (
+                                    metric_database_configuration.id
+                                    in config["metrics"]
+                                ):
+                                    logger.warn(
+                                        f"Metric already configured for database {metric_database_configuration.database_id}. Ignoring!"
+                                    )
+                                else:
+                                    metric_config = {
+                                        "mode": "RW",
+                                        "interval_min": metric_database_configuration.interval_min.ns,
+                                        "interval_max": metric_database_configuration.interval_max.ns,
+                                        "interval_factor": metric_database_configuration.interval_factor,
+                                    }
+                                    config["metrics"][
+                                        metric_database_configuration.id
+                                    ] = metric_config
                         else:
-                            metric_config = {
-                                "mode": "RW",
-                                "interval_min": metric_database_configuration.interval_min.ns,
-                                "interval_max": metric_database_configuration.interval_max.ns,
-                                "interval_factor": metric_database_configuration.interval_factor,
-                            }
-                            config["metrics"][
-                                metric_database_configuration.id
-                            ] = metric_config
+                            logger.warn("Metric not found. Ignoring!")
 
-                            await config.save()
-                    else:
-                        logger.warn("Config for database not found!")
-        else:
-            logger.warn("Metric not found. Ignoring!")
+                    await config.save()
+                else:
+                    logger.warn("Config for database not found!")
 
     def _get_config_lock(self, token):
         config_lock = self._config_locks.get(token, None)
