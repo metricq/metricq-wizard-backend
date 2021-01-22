@@ -139,8 +139,7 @@ async def post_metric_list(request: Request):
     request_data = await request.json()
 
     database_configs = MetricDatabaseConfigurations(**request_data)
-    for db_config in database_configs.database_configurations:
-        await client.update_metric_database_config(db_config)
+    await client.update_metric_database_config(database_configs.database_configurations)
 
     return Response(
         text=database_configs.json(by_alias=True),
