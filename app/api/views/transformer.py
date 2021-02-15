@@ -40,7 +40,12 @@ async def get_transformer_list(request: Request):
     for config_id, config in config_dict.items():
         if config_id.startswith("transformer-"):
             try:
-                transformer_list.append({"id": config_id})
+                transformer_list.append(
+                    {
+                        "id": config_id,
+                        "isCombinator": "combinator" in config_id.lower(),
+                    }
+                )
             except KeyError:
                 logger.error(
                     f"Config of transformer {config_id} is incorrect! Missing key"
