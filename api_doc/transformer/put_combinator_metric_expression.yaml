@@ -1,0 +1,29 @@
+description: Create a new combined metric, provided by given combinator
+tags:
+- Transformer
+parameters:
+- in: path
+  name: transformer_id
+  required: true
+  description: id of the combinator
+- in: path
+  name: metric_id
+  required: true
+  description: id of the metric
+requestBody:
+  description: expression of the new combined metric
+  content:
+    'application/json':
+      schema:
+        type: object
+        properties:
+          expression:
+            description: the expression of the new combined metric
+            type: object
+responses:
+  '204':
+    description: the new combined metric was created
+  '400':
+    description: the combined metric already exists
+produces:
+- application/json

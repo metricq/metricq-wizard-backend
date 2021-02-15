@@ -1,0 +1,29 @@
+description: Update a combined metric expression
+tags:
+- Transformer
+parameters:
+- in: path
+  name: transformer_id
+  required: true
+  description: id of the combinator
+- in: path
+  name: metric_id
+  required: true
+  description: id of the metric
+requestBody:
+  description: new expression of the combined metric
+  content:
+    'application/json':
+      schema:
+        type: object
+        properties:
+          expression:
+            description: the expression of the combined metric
+            type: object
+responses:
+  '204':
+    description: the expression of the combined metric was updated
+  '400':
+    description: the combined metric doesn't exist
+produces:
+- application/json
