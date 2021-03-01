@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
+import hashlib
 
 from itertools import islice
 
@@ -394,7 +395,16 @@ class Configurator(Client):
         config = await self.read_config(transformer_id)
         for transformer_metric in config.get("metrics", {}):
             if transformer_metric == metric:
-                return config["metrics"][transformer_metric].get("expression")
+                config_hash = hashlib.sha256(
+                    json.dumps(config["metrics"][transformer_metric]).encode("utf-8")
+                ).hexdigest()
+                logger.info("JSON hash is {}", config_hash)
+                return {
+                    "config_hash": config_hash,
+                    "expression": config["metrics"][transformer_metric].get(
+                        "expression"
+                    ),
+                }
         return None
 
     async def create_combined_metric(
@@ -414,7 +424,7 @@ class Configurator(Client):
         return False
 
     async def update_combined_metric_expression(
-        self, transformer_id: str, metric: str, expression: Dict
+        self, transformer_id: str, metric: str, expression: Dict, config_hash: str
     ) -> bool:
         async with self._get_config_lock(transformer_id):
             config = await self.couchdb_db_config[transformer_id]
@@ -423,8 +433,12 @@ class Configurator(Client):
                 config["metrics"] = {}
 
             if metric in config["metrics"]:
-                config["metrics"][metric]["expression"] = expression
-                await config.save()
-                return True
+                old_config_hash = hashlib.sha256(
+                    json.dumps(config["metrics"][metric]).encode("utf-8")
+                ).hexdigest()
+                if config_hash == old_config_hash:
+                    config["metrics"][metric]["expression"] = expression
+                    await config.save()
+                    return True
 
         return False

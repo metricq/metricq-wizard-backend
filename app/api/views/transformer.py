@@ -74,7 +74,8 @@ async def get_combinator_metric_expression(request: Request):
             {
                 "transformerId": transformer_id,
                 "metric": metric_id,
-                "expression": expression,
+                "expression": expression["expression"],
+                "configHash": expression["config_hash"],
             }
         ),
         content_type="application/json",
@@ -114,10 +115,11 @@ async def patch_combinator_metric_expression(request: Request):
     request_data = await request.json()
 
     new_expression = request_data.get("expression")
+    config_hash = request_data.get("configHash")
 
-    if new_expression:
+    if new_expression and config_hash:
         if await configurator.update_combined_metric_expression(
-            transformer_id, metric_id, new_expression
+            transformer_id, metric_id, new_expression, config_hash
         ):
             return Response(
                 status=204,

@@ -18,12 +18,18 @@ responses:
         schema:
           type: object
           properties:
-            configItemName:
+            transformerId:
               type: string
-            configItems:
-              type: array
-              items:
-                $ref: "#/components/schemas/ConfigItem"
+              description: id of the combinator
+            metric:
+              type: string
+              description: id of the metric
+            expression:
+              type: object
+              description: the expression of the metric
+            configHash:
+              type: string
+              description: hash of current config, required for PATCH
   '404':
     description: metric not found for given combinator
 produces:

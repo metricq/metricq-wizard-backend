@@ -20,10 +20,13 @@ requestBody:
           expression:
             description: the expression of the combined metric
             type: object
+          configHash:
+            descirption: the config hash provided by the api on get
+            type: string
 responses:
   '204':
     description: the expression of the combined metric was updated
   '400':
-    description: the combined metric doesn't exist
+    description: the combined metric doesn't exist or the config hash mismatches
 produces:
 - application/json
