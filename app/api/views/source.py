@@ -61,8 +61,14 @@ async def get_source_list(request: Request):
 @routes.get("/api/source/{source_id}/config_items")
 async def get_source_config_items(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     return Response(
         text=json.dumps(
@@ -82,8 +88,14 @@ async def get_source_config_items(request: Request):
 @routes.post("/api/source/{source_id}/config_items")
 async def add_source_config_item(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     request_data = await request.json()
 
@@ -97,8 +109,14 @@ async def add_source_config_item(request: Request):
 async def get_source_metrics_for_config_item(request: Request):
     source_id = request.match_info["source_id"]
     config_item_id = request.match_info["config_item_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     metric_list = await source_plugin.get_metrics_for_config_item(config_item_id)
 
@@ -112,8 +130,14 @@ async def get_source_metrics_for_config_item(request: Request):
 async def add_source_metrics_for_config_item(request: Request):
     source_id = request.match_info["source_id"]
     config_item_id = request.match_info["config_item_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     request_data = await request.json()
     if "metrics" not in request_data:
@@ -135,8 +159,14 @@ async def add_source_metrics_for_config_item(request: Request):
 @routes.get("/api/source/{source_id}/config_items/input_form")
 async def get_source_add_config_item_input_form(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     return Response(
         text=json.dumps(source_plugin.input_form_add_config_item()),
@@ -147,8 +177,14 @@ async def get_source_add_config_item_input_form(request: Request):
 @routes.get("/api/source/{source_id}/config_item/{config_item_id}/input_form")
 async def get_source_edit_config_item_input_form(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     return Response(
         text=json.dumps(source_plugin.input_form_edit_config_item()),
@@ -161,8 +197,14 @@ async def get_source_edit_config_item_input_form(request: Request):
 async def get_source_config_item(request: Request):
     source_id = request.match_info["source_id"]
     config_item_id = request.match_info["config_item_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     config_item_config = await source_plugin.get_config_item(config_item_id)
 
@@ -176,8 +218,14 @@ async def get_source_config_item(request: Request):
 async def update_source_config_item(request: Request):
     source_id = request.match_info["source_id"]
     config_item_id = request.match_info["config_item_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     request_data = await request.json()
 
@@ -191,8 +239,14 @@ async def update_source_config_item(request: Request):
 async def delete_source_config_item(request: Request):
     source_id = request.match_info["source_id"]
     config_item_id = request.match_info["config_item_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     await source_plugin.delete_config_item(config_item_id)
 
@@ -204,8 +258,14 @@ async def delete_source_config_item(request: Request):
 @routes.get("/api/source/{source_id}/input_form")
 async def get_source_edit_global_config_input_form(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     return Response(
         text=json.dumps(await source_plugin.input_form_edit_global_config()),
@@ -217,8 +277,14 @@ async def get_source_edit_global_config_input_form(request: Request):
 @routes.get("/api/source/{source_id}")
 async def get_source_global_config(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     source_global_config = await source_plugin.get_global_config()
 
@@ -231,8 +297,14 @@ async def get_source_global_config(request: Request):
 @routes.post("/api/source/{source_id}")
 async def update_source_global_config(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    source_plugin = await configurator.get_source_plugin(source_id=source_id)
+    source_plugin = await configurator.get_source_plugin(
+        source_id=source_id, session_key=session_key
+    )
 
     request_data = await request.json()
 
@@ -247,8 +319,14 @@ async def update_source_global_config(request: Request):
 @routes.post("/api/source/{source_id}/save")
 async def save_source_config(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(source_id=source_id, unload_plugin=True)
+    await configurator.save_source_config(
+        source_id=source_id, session_key=session_key, unload_plugin=True
+    )
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
@@ -272,8 +350,14 @@ async def reconfigure_source(request: Request):
 @routes.post("/api/source/{source_id}/save_reconfigure")
 async def save_config_and_reconfigure_source(request: Request):
     source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(source_id=source_id, unload_plugin=True)
+    await configurator.save_source_config(
+        source_id=source_id, session_key=session_key, unload_plugin=True
+    )
     if not request.app["settings"].dry_run:
         await configurator.reconfigure_client(client_id=source_id)
 

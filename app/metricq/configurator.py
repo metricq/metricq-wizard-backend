@@ -69,7 +69,7 @@ class Configurator(Client):
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
 
-        self._loaded_plugins: Dict[str, SourcePlugin] = {}
+        self._loaded_plugins: Dict[str, Dict[str, SourcePlugin]] = {}
         self._config_locks = {}
 
     async def connect(self):
@@ -208,7 +208,7 @@ class Configurator(Client):
             self._config_locks[token] = config_lock
         return config_lock
 
-    async def get_source_plugin(self, source_id) -> SourcePlugin:
+    async def get_source_plugin(self, source_id, session_key: str) -> SourcePlugin:
         config = await self.couchdb_db_config[source_id]
         if "type" not in config:
             logger.error(f"No type for source {source_id} provided.")
@@ -216,36 +216,41 @@ class Configurator(Client):
 
         source_type = config["type"].replace("-", "_")
 
-        if source_id not in self._loaded_plugins:
+        plugins_for_source = self._loaded_plugins.get(source_id, {})
+        if session_key not in plugins_for_source:
             full_module_name = f"metricq_wizard_plugin_{source_type}"
             if importlib.util.find_spec(full_module_name):
                 plugin_module = importlib.import_module(full_module_name)
                 entry_point: EntryPointType = plugin_module.get_plugin
-                self._loaded_plugins[source_id] = entry_point(
+                plugins_for_source[session_key] = entry_point(
                     config, self._rpc_for_plugins(client_token=source_id)
                 )
+                self._loaded_plugins[source_id] = plugins_for_source
             else:
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."
                 )
                 return None
 
-        if source_id in self._loaded_plugins:
-            return self._loaded_plugins[source_id]
+        if session_key in plugins_for_source:
+            return plugins_for_source[session_key]
 
         logger.error(f"Plugin instance for source {source_id} not found.")
         return None
 
-    def unload_source_plugin(self, source_id):
-        if source_id in self._loaded_plugins:
-            del self._loaded_plugins[source_id]
+    def unload_source_plugin(self, source_id, session_key):
+        plugins_for_source = self._loaded_plugins.get(source_id, {})
+        if session_key in plugins_for_source:
+            del self._loaded_plugins[source_id][session_key]
 
-    async def save_source_config(self, source_id, unload_plugin=False):
-        source_plugin = await self.get_source_plugin(source_id)
+    async def save_source_config(
+        self, source_id, session_key: str, unload_plugin=False
+    ):
+        source_plugin = await self.get_source_plugin(source_id, session_key)
         await self.set_config(source_id, await source_plugin.get_config())
 
         if unload_plugin:
-            self.unload_source_plugin(source_id)
+            self.unload_source_plugin(source_id, session_key)
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
