@@ -6,6 +6,10 @@ parameters:
   name: source_id
   required: true
   description: id of the source
+- in: query
+  name: session
+  required: true
+  description: session key for source plugin session
 responses:
   '200':
     description: source specific name for config items and list of configuration items

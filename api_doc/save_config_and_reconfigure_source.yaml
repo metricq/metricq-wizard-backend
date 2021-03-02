@@ -6,6 +6,10 @@ parameters:
   name: source_id
   required: true
   description: id of the source
+- in: query
+  name: session
+  required: true
+  description: session key for source plugin session
 response:
   '200':
     description: status of the save and reconfiguration

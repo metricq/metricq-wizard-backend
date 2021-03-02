@@ -6,6 +6,10 @@ parameters:
   name: source_id
   required: true
   description: id of the source
+- in: query
+  name: session
+  required: true
+  description: session key for source plugin session
 requestBody:
   description: fields of the input form for new config item
   content:

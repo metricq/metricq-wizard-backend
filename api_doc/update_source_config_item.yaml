@@ -10,6 +10,10 @@ parameters:
   name: config_item_id
   required: true
   description: id of the configuration item
+- in: query
+  name: session
+  required: true
+  description: session key for source plugin session
 requestBody:
   description: updated config for the config item
   content:
