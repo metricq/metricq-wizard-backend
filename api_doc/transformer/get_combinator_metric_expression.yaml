@@ -1,0 +1,36 @@
+description: Get expression for a metric of a combinator
+tags:
+- Transformer
+parameters:
+- in: path
+  name: transformer_id
+  required: true
+  description: id of the combinator
+- in: path
+  name: metric_id
+  required: true
+  description: id of the metric
+responses:
+  '200':
+    description: source specific name for config items and list of configuration items
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            transformerId:
+              type: string
+              description: id of the combinator
+            metric:
+              type: string
+              description: id of the metric
+            expression:
+              type: object
+              description: the expression of the metric
+            configHash:
+              type: string
+              description: hash of current config, required for PATCH
+  '404':
+    description: metric not found for given combinator
+produces:
+- application/json
