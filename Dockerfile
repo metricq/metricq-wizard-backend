@@ -1,4 +1,4 @@
-FROM metricq-python:latest AS builder
+FROM metricq/metricq-python:latest AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER root
@@ -13,7 +13,7 @@ RUN . /home/metricq/venv/bin/activate && pip install gunicorn
 WORKDIR /home/metricq
 RUN wget -O wait-for-it.sh https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh && chmod +x wait-for-it.sh
 
-FROM metricq-python:latest
+FROM metricq/metricq-python:latest
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER metricq
