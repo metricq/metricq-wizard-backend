@@ -34,8 +34,8 @@ ENV COUCHDB_URL=$couchdb_url
 ARG couchdb_user=admin
 ENV COUCHDB_USER=$couchdb_user
 
-ARG couchdb_pw=admin
-ENV COUCHDB_PW=$couchdb_pw
+ARG couchdb_password=admin
+ENV COUCHDB_PASSORD=$couchdb_password
 
 ARG wait_for_rabbitmq_url=127.0.0.1:5672
 ENV wait_for_rabbitmq_url=$wait_for_rabbitmq_url
