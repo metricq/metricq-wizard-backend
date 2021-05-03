@@ -7,4 +7,4 @@ aiohttp-session[secure]~=2.8.0
 aiohttp-swagger~=1.0.14
 pydantic~=1.0
 aiocouch
-metricq
+metricq~=2.0
