@@ -20,6 +20,7 @@ USER metricq
 COPY --from=builder --chown=metricq:metricq /home/metricq/venv /home/metricq/venv
 COPY --from=builder --chown=metricq:metricq /home/metricq/wizard /home/metricq/wizard
 COPY --from=builder --chown=metricq:metricq /home/metricq/wait-for-it.sh /home/metricq/
+RUN mkdir /home/metricq/wizard/config-backup
 
 WORKDIR /home/metricq/wizard
 
