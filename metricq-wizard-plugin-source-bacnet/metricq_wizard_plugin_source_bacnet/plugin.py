@@ -124,7 +124,11 @@ class Plugin(SourcePlugin):
                 for object_instance in unpack_range(object_group["objectInstance"]):
                     previous_object_configurations[object_group["objectType"]][
                         object_instance
-                    ] = {"active": True, "interval": object_group["interval"]}
+                    ] = {
+                        "active": True,
+                        "interval": object_group["interval"],
+                        "found": False,
+                    }
 
         metric_id_template = Template(
             self._config["devices"]
@@ -180,6 +184,7 @@ class Plugin(SourcePlugin):
             )
 
             custom_columns = {
+                "detected": {"_": {"type": "LabelField", "value": "yes"}},
                 "metric_name": {"_": {"type": "LabelField", "value": metric_name}},
                 "interval": {"_": {"type": "NumberField", "value": interval}},
                 "object_type": {"_": {"type": "LabelField", "value": object_type}},
@@ -190,6 +195,11 @@ class Plugin(SourcePlugin):
                 f"{object_identifier}: {previous_object_configurations.get(object_type, {}).get(object_instance, {})}"
             )
 
+            if previous_object_configurations.get(object_type, {}).get(object_instance):
+                previous_object_configurations.get(object_type, {}).get(
+                    object_instance, {}
+                )["found"] = True
+
             available_metric_items.append(
                 AvailableMetricItem(
                     id=object_identifier,
@@ -199,7 +209,57 @@ class Plugin(SourcePlugin):
                     .get("active", False),
                 )
             )
+
+        for object_type in previous_object_configurations:
+            for object_instance in previous_object_configurations[object_type]:
+                if not previous_object_configurations[object_type][object_instance][
+                    "found"
+                ]:
+                    object_identifier = f"{object_type}-{object_instance}"
+                    logger.debug(f"{object_identifier} was not found on device!")
+
+                    metric_name = (
+                        metric_id_template.template.replace("'", ".")
+                        .replace("`", ".")
+                        .replace("´", ".")
+                        .replace(" ", "")
+                    )
+                    description = (
+                        description_template.template.replace("'", ".")
+                        .replace("`", ".")
+                        .replace("´", ".")
+                    )
+                    interval = previous_object_configurations[object_type][
+                        object_instance
+                    ]["interval"]
+
+                    custom_columns = {
+                        "detected": {"_": {"type": "LabelField", "value": "no"}},
+                        "metric_name": {
+                            "_": {"type": "LabelField", "value": metric_name}
+                        },
+                        "interval": {
+                            "_": {"type": "NumberField", "label": "", "value": interval}
+                        },
+                        "object_type": {
+                            "_": {"type": "LabelField", "value": object_type}
+                        },
+                        "description": {
+                            "_": {"type": "LabelField", "value": description}
+                        },
+                    }
+                    available_metric_items.append(
+                        AvailableMetricItem(
+                            id=object_identifier,
+                            custom_columns=custom_columns,
+                            is_active=previous_object_configurations[object_type][
+                                object_instance
+                            ]["active"],
+                        )
+                    )
+
         columns = {
+            "detected": "Provided by BACnet",
             "metric_name": "Metric Name",
             "interval": "Interval [s]",
             "object_type": "Object Type",
@@ -294,7 +354,9 @@ class Plugin(SourcePlugin):
         self._config["devices"][config_item_id]["objectGroups"] = new_object_groups
 
         # Get diff of metrics
-        created_metrics = set(new_metrics) - set(old_metrics)
+        created_metrics = (
+            set(new_metrics) - set(old_metrics) - set([metric_id_template.template])
+        )
 
         return list(created_metrics)
 
