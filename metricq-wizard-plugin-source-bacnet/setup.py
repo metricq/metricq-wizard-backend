@@ -26,5 +26,5 @@ setup(
     python_requires=">=3.8",
     packages=["metricq_wizard_plugin_source_bacnet"],
     scripts=[],
-    install_requires=[],
+    install_requires=["metricq-wizard-backend"],
 )
