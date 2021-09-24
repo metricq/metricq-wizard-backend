@@ -3,7 +3,7 @@ from typing import Dict, Sequence
 
 from metricq import get_logger
 
-from app.metricq.source_plugin import (
+from metricq_wizard_backend.metricq.source_plugin import (
     SourcePlugin,
     AddMetricItem,
     AvailableMetricItem,

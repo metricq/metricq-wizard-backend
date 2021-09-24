@@ -26,8 +26,8 @@ from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
 import metricq
-from app.metricq import Configurator
-from app.metricq.source_plugin import AddMetricItem
+from metricq_wizard_backend.metricq import Configurator
+from metricq_wizard_backend.metricq.source_plugin import AddMetricItem
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
