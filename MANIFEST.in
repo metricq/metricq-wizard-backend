@@ -1,0 +1,6 @@
+recursive-include metricq_wizard_backend *.py
+recursive-include api_doc *.yaml
+include metricq_wizard_backend/version.py
+
+include pyproject.toml
+include *.md

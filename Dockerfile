@@ -8,7 +8,7 @@ USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
 
 WORKDIR /home/metricq/wizard
-RUN . /home/metricq/venv/bin/activate && pip install -r requirements.txt
+RUN . /home/metricq/venv/bin/activate && pip install .
 RUN . /home/metricq/venv/bin/activate && pip install gunicorn
 WORKDIR /home/metricq
 RUN wget -O wait-for-it.sh https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh && chmod +x wait-for-it.sh
