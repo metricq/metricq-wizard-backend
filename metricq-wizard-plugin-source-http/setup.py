@@ -26,5 +26,5 @@ setup(
     python_requires=">=3.8",
     packages=["metricq_wizard_plugin_source_http"],
     scripts=[],
-    install_requires=["yarl"],
+    install_requires=["yarl", "metricq-wizard-backend"],
 )
