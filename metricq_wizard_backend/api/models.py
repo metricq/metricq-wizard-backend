@@ -17,13 +17,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import re
 from typing import List
 
-import re
-
-from pydantic import BaseModel, validator, root_validator
-
 import metricq
+from pydantic import BaseModel, root_validator
 
 
 class Timedelta(metricq.Timedelta):

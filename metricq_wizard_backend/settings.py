@@ -1,6 +1,4 @@
-from urllib.parse import urlparse
-
-from pydantic import BaseSettings, stricturl, AnyHttpUrl
+from pydantic import AnyHttpUrl, BaseSettings, stricturl
 
 
 class Settings(BaseSettings):
@@ -13,7 +11,7 @@ class Settings(BaseSettings):
     cookie_name = "metricq_wizard_backend"
     token = name
     amqp_server: stricturl(
-        tld_required=False, allowed_schemes={"amqp", "amqps"}
+        tld_required=False, allowed_schemes={"amqp", "amqps"}  # noqa: F821
     ) = "amqp://admin:admin@localhost/"
     couchdb_url: AnyHttpUrl = "http://localhost:5984"
     couchdb_user = "admin"

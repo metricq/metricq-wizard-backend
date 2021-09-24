@@ -17,18 +17,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
-import math
 import json
+import math
 
 import metricq
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 
-from metricq_wizard_backend.api.models import (
-    MetricDatabaseConfiguration,
-    MetricDatabaseConfigurations,
-)
+from metricq_wizard_backend.api.models import MetricDatabaseConfigurations
 from metricq_wizard_backend.metricq import Configurator
 
 logger = metricq.get_logger()
@@ -71,7 +68,7 @@ async def post_metric_list(request: Request):
                 metric = {"id": metric_id}
                 metric_list.append(metric)
     elif "database" in request_data:
-        requested_database = request_data["database"]
+        # requested_database = request_data["database"]
 
         # TODO filter db
 
@@ -137,7 +134,7 @@ async def post_metric_database_default_config(request: Request):
 
 
 @routes.post("/api/metrics/database")
-async def post_metric_list(request: Request):
+async def post_metric_database(request: Request):
     client: Configurator = request.app["metricq_client"]
     request_data = await request.json()
 
@@ -155,7 +152,7 @@ async def get_db_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
     config_dict = await configurator.get_configs()
     db_list = []
-    for config_id, config in config_dict.items():
+    for config_id in config_dict.keys():
         if config_id.startswith("db-"):
             try:
                 db_list.append({"id": config_id})

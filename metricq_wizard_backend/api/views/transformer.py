@@ -18,13 +18,12 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
-from aiohttp import web_exceptions
 
+import metricq
+from aiohttp import web_exceptions
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
-
-import metricq
 from aiohttp_swagger import swagger_path
 
 from metricq_wizard_backend.metricq import Configurator
@@ -40,7 +39,7 @@ async def get_transformer_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
     config_dict = await configurator.get_configs()
     transformer_list = []
-    for config_id, config in config_dict.items():
+    for config_id in config_dict.keys():
         if config_id.startswith("transformer-"):
             try:
                 transformer_list.append(

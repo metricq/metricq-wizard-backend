@@ -19,13 +19,13 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
 
+import metricq
 from aiohttp.web_exceptions import HTTPBadRequest
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
-import metricq
 from metricq_wizard_backend.metricq import Configurator
 from metricq_wizard_backend.metricq.source_plugin import AddMetricItem
 

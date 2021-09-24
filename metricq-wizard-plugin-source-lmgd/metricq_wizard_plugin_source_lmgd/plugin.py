@@ -4,12 +4,12 @@ from typing import Dict, Sequence
 from metricq import get_logger
 
 from metricq_wizard_backend.metricq.source_plugin import (
-    SourcePlugin,
     AddMetricItem,
     AvailableMetricItem,
-    ConfigItem,
     AvailableMetricList,
+    ConfigItem,
     PluginRPCFunctionType,
+    SourcePlugin,
 )
 
 logger = get_logger(__name__)

@@ -19,7 +19,7 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import re
 from abc import ABC, abstractmethod
-from typing import Sequence, Dict, Type, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional, Sequence
 
 import pydantic
 
