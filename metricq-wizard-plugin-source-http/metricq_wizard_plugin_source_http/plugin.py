@@ -3,7 +3,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
-from app.metricq.source_plugin import (
+from metricq_wizard_backend.metricq.source_plugin import (
     SourcePlugin,
     AddMetricItem,
     AvailableMetricItem,

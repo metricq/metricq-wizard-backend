@@ -46,4 +46,4 @@ ENV AMQP_SERVER=$amqp_server
 
 VOLUME /home/metricq/wizard/config-backup/
 
-CMD /home/metricq/wait-for-it.sh $wait_for_couchdb_url -- /home/metricq/wait-for-it.sh $wait_for_rabbitmq_url -- /home/metricq/venv/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker app.main:create_app
+CMD /home/metricq/wait-for-it.sh $wait_for_couchdb_url -- /home/metricq/wait-for-it.sh $wait_for_rabbitmq_url -- /home/metricq/venv/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker metricq_wizard_backend.main:create_app

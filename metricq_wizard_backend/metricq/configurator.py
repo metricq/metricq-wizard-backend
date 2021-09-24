@@ -32,8 +32,9 @@ from aiocouch import CouchDB, database
 from metricq import Client
 from metricq.logging import get_logger
 
-from app.api.models import MetricDatabaseConfiguration
-from app.metricq.source_plugin import SourcePlugin, EntryPointType
+from metricq_wizard_backend.version import version as __version__
+from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
+from metricq_wizard_backend.metricq.source_plugin import SourcePlugin, EntryPointType
 
 logger = get_logger()
 

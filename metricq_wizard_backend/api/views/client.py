@@ -25,7 +25,7 @@ from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
-from app.metricq import Configurator
+from metricq_wizard_backend.metricq import Configurator
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")

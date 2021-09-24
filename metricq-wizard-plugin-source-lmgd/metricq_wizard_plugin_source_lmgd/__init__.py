@@ -1,4 +1,4 @@
-from app.metricq.source_plugin import PluginRPCFunctionType
+from metricq_wizard_backend.metricq.source_plugin import PluginRPCFunctionType
 from .plugin import Plugin
 
 
