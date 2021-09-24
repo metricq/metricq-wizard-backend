@@ -1,13 +1,13 @@
-from typing import Sequence, Dict, Any
+from typing import Any, Dict, Sequence
 from urllib.parse import urljoin
 
 import aiohttp
 
 from metricq_wizard_backend.metricq.source_plugin import (
-    SourcePlugin,
     AddMetricItem,
     AvailableMetricItem,
     ConfigItem,
+    SourcePlugin,
 )
 
 

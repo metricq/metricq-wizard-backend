@@ -17,24 +17,21 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
-import json
 import hashlib
-
-from itertools import islice
-
 import importlib
+import json
 from asyncio import Lock
 from datetime import datetime
-from typing import Union, Sequence, Dict, Any, Optional
+from itertools import islice
+from typing import Any, Dict, Optional, Sequence, Union
 
 from aiocouch import CouchDB, database
-
 from metricq import Client
 from metricq.logging import get_logger
 
-from metricq_wizard_backend.version import version as __version__
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
-from metricq_wizard_backend.metricq.source_plugin import SourcePlugin, EntryPointType
+from metricq_wizard_backend.metricq.source_plugin import EntryPointType, SourcePlugin
+from metricq_wizard_backend.version import version as __version__  # noqa: F401
 
 logger = get_logger()
 

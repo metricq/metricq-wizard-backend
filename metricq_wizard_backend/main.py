@@ -20,13 +20,13 @@
 
 from pathlib import Path
 
+import aiohttp_cors
 import aiohttp_jinja2
 import aiohttp_session
 import jinja2
 from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
-import aiohttp_cors
 from aiohttp_swagger import setup_swagger
 
 from . import api

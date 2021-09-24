@@ -20,19 +20,18 @@
 import asyncio
 import re
 from string import Template
-from typing import Sequence, Dict, Union, List
-
-from metricq import get_logger
+from typing import Dict, List, Sequence
 
 from aiohttp.web_exceptions import HTTPBadRequest
+from metricq import get_logger
 
 from metricq_wizard_backend.metricq.source_plugin import (
-    SourcePlugin,
     AddMetricItem,
-    ConfigItem,
-    AvailableMetricList,
-    PluginRPCFunctionType,
     AvailableMetricItem,
+    AvailableMetricList,
+    ConfigItem,
+    PluginRPCFunctionType,
+    SourcePlugin,
 )
 
 logger = get_logger(__name__)
