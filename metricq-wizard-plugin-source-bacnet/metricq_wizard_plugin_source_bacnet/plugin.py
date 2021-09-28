@@ -278,6 +278,12 @@ class Plugin(SourcePlugin):
         metrics: Sequence[AddMetricItem],
         not_selected_metric_ids: Sequence[str],
     ) -> Sequence[str]:
+        if config_item_id not in self._config["devices"]:
+            self._config["devices"][config_item_id] = {
+                "metricId": "$objectName",
+                "objectGroups": [],
+            }
+
         object_groups = self._config["devices"][config_item_id]["objectGroups"]
         device_object_info_cache = self._object_info_cache.get(config_item_id, {})
         metric_id_template = Template(
@@ -454,13 +460,30 @@ class Plugin(SourcePlugin):
     async def get_config_item(self, config_item_id: str) -> Dict:
         return {
             "deviceIp": f"Device IP: {config_item_id}",
-            "metricId": self._config["devices"][config_item_id]["metricId"],
-            "deviceId": self._config["devices"][config_item_id].get("deviceIdentifier"),
-            "description": self._config["devices"][config_item_id].get("description"),
-            "chunkSize": self._config["devices"][config_item_id].get("chunkSize"),
+            "metricId": self._config["devices"]
+            .get(config_item_id, {})
+            .get("metricId", "$objectName"),
+            "deviceId": self._config["devices"]
+            .get(config_item_id, {})
+            .get("deviceIdentifier"),
+            "description": self._config["devices"]
+            .get(config_item_id, {})
+            .get("description"),
+            "chunkSize": self._config["devices"]
+            .get(config_item_id, {})
+            .get("chunkSize"),
         }
 
     async def update_config_item(self, config_item_id: str, data: Dict) -> ConfigItem:
+        if config_item_id not in self._config["devices"]:
+            if "metricId" not in data or not data["metricId"]:
+                raise HTTPBadRequest(reason="metricId is required for new devices!")
+
+            self._config["devices"][config_item_id] = {
+                "metricId": data["metricId"],
+                "objectGroups": [],
+            }
+
         if "metricId" in data and data["metricId"]:
             self._config["devices"][config_item_id]["metricId"] = data["metricId"]
 
