@@ -149,6 +149,7 @@ class Plugin(SourcePlugin):
         available_metric_items = []
         for object_identifier in object_list_from_source:
             object_type, object_instance = object_identifier.split("-")
+            object_instance = int(object_instance)
 
             object_info = object_list_from_source[object_identifier]
 
@@ -210,7 +211,7 @@ class Plugin(SourcePlugin):
                     id=object_identifier,
                     custom_columns=custom_columns,
                     is_active=previous_object_configurations.get(object_type, {})
-                    .get(int(object_instance), {})
+                    .get(object_instance, {})
                     .get("active", False),
                 )
             )
