@@ -1,6 +1,8 @@
 FROM metricq/metricq-python:latest AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
+ARG SETUPTOOLS_SCM_PRETEND_VERSION
+
 USER root
 RUN apt-get update && apt-get install -y git build-essential wget
 
