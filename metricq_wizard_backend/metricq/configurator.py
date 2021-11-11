@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import hashlib
-import importlib
 import json
 from asyncio import Lock
 from datetime import datetime
@@ -30,7 +29,8 @@ from metricq import Client
 from metricq.logging import get_logger
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
-from metricq_wizard_backend.metricq.source_plugin import EntryPointType, SourcePlugin
+from metricq_wizard_backend.metricq.session_manager import UserSessionManager
+from metricq_wizard_backend.metricq.source_plugin import SourcePlugin
 from metricq_wizard_backend.version import version as __version__  # noqa: F401
 
 logger = get_logger()
@@ -68,7 +68,8 @@ class Configurator(Client):
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
 
-        self._loaded_plugins: Dict[str, Dict[str, SourcePlugin]] = {}
+        self.user_session_manager = UserSessionManager()
+
         self._config_locks = {}
 
     async def connect(self):
@@ -207,49 +208,39 @@ class Configurator(Client):
             self._config_locks[token] = config_lock
         return config_lock
 
-    async def get_source_plugin(self, source_id, session_key: str) -> SourcePlugin:
+    async def get_source_plugin(
+        self, source_id, session_key: str
+    ) -> Optional[SourcePlugin]:
         config = await self.couchdb_db_config[source_id]
         if "type" not in config:
             logger.error(f"No type for source {source_id} provided.")
             return None
 
-        source_type = config["type"].replace("-", "_")
+        session = self.user_session_manager.get_user_session(session_key)
+        source_plugin = session.get_source_plugin(source_id)
 
-        plugins_for_source = self._loaded_plugins.get(source_id, {})
-        if session_key not in plugins_for_source:
-            full_module_name = f"metricq_wizard_plugin_{source_type}"
-            if importlib.util.find_spec(full_module_name):
-                plugin_module = importlib.import_module(full_module_name)
-                entry_point: EntryPointType = plugin_module.get_plugin
-                plugins_for_source[session_key] = entry_point(
-                    config, self._rpc_for_plugins(client_token=source_id)
-                )
-                self._loaded_plugins[source_id] = plugins_for_source
-            else:
-                logger.error(
-                    f"Plugin {full_module_name} for source {source_id} not found."
-                )
-                return None
+        if source_plugin is None:
+            source_plugin = session.create_source_plugin(
+                source_id,
+                source_config=config,
+                rpc_function=self._rpc_for_plugins(client_token=source_id),
+            )
 
-        if session_key in plugins_for_source:
-            return plugins_for_source[session_key]
-
-        logger.error(f"Plugin instance for source {source_id} not found.")
-        return None
+        return source_plugin
 
     def unload_source_plugin(self, source_id, session_key):
-        plugins_for_source = self._loaded_plugins.get(source_id, {})
-        if session_key in plugins_for_source:
-            del self._loaded_plugins[source_id][session_key]
+        session = self.user_session_manager.get_user_session(session_key)
+        session.unload_source_plugin(source_id)
 
     async def save_source_config(
         self, source_id, session_key: str, unload_plugin=False
     ):
         source_plugin = await self.get_source_plugin(source_id, session_key)
-        await self.set_config(source_id, await source_plugin.get_config())
+        if source_plugin:
+            await self.set_config(source_id, await source_plugin.get_config())
 
-        if unload_plugin:
-            self.unload_source_plugin(source_id, session_key)
+            if unload_plugin:
+                self.unload_source_plugin(source_id, session_key)
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
