@@ -19,10 +19,10 @@ FROM metricq/metricq-python:latest
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER metricq
+RUN mkdir -p /home/metricq/wizard/config-backup
 COPY --from=builder --chown=metricq:metricq /home/metricq/venv /home/metricq/venv
-COPY --from=builder --chown=metricq:metricq /home/metricq/wizard /home/metricq/wizard
+COPY --from=builder --chown=metricq:metricq /home/metricq/wizard/api_doc /home/metricq/wizard/api_doc
 COPY --from=builder --chown=metricq:metricq /home/metricq/wait-for-it.sh /home/metricq/
-RUN mkdir /home/metricq/wizard/config-backup
 
 WORKDIR /home/metricq/wizard
 
