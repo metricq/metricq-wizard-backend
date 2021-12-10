@@ -130,5 +130,10 @@ class SourcePlugin(ABC):
     async def get_config(self) -> Dict:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_configured_metrics(self) -> Sequence[str]:
+        """return a list of currently configured metrics"""
+        raise NotImplementedError
+
 
 EntryPointType = Callable[[Dict, PluginRPCFunctionType], SourcePlugin]

@@ -610,3 +610,7 @@ class Plugin(SourcePlugin):
 
     async def get_config(self) -> Dict:
         return self._config
+
+    def get_configured_metrics(self) -> Sequence[str]:
+        logger.info("BACnet plugin doesn't support getting a list of configured metrics at the moment, because this requires access to all configured BACnet objects!")
+        return []

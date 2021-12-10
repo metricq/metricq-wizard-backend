@@ -271,3 +271,11 @@ class Plugin(SourcePlugin):
 
     async def get_config(self) -> Dict:
         return self._config
+
+
+    def get_configured_metrics(self) -> Sequence[str]:
+        return [
+            f"{channel_config['name']}.{metric_id_to_name.get(metric, metric).replace('@', '.')}"
+            for channel_config in self._config["channels"]
+            for metric in channel_config["metrics"]
+        ]
