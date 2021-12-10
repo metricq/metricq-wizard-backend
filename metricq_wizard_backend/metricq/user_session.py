@@ -18,7 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import importlib
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 from metricq import get_logger, Timestamp
 
@@ -40,6 +40,7 @@ class UserSession:
         self._source_plugins: Dict[str, SourcePlugin] = {}
         self._source_config_revision: Dict[str, str] = {}
         self._source_plugin_creation_time: Dict[str, Timestamp] = {}
+        self._source_plugin_initial_configured_metrics: Dict[str, Sequence[str]] = {}
         self.creation_time = Timestamp.now()
 
     def create_source_plugin(
@@ -60,6 +61,9 @@ class UserSession:
                 )
                 self._source_config_revision[source_id] = source_config.get("_rev")
                 self._source_plugin_creation_time[source_id] = Timestamp.now()
+                self._source_plugin_initial_configured_metrics[source_id] = self._source_plugins[source_id].get_configured_metrics()
+                logger.debug(
+                    f"Currently configured metrics: {self._source_plugin_initial_configured_metrics[source_id]}")
             else:
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."
@@ -85,3 +89,17 @@ class UserSession:
 
     def get_source_plugin_creation_time(self, source_id) -> Optional[Timestamp]:
         return self._source_plugin_creation_time.get(source_id)
+
+    def get_added_metrics(self, source_id) -> Sequence[str]:
+        plugin = self._source_plugins.get(source_id)
+        if plugin is None:
+            return []
+
+        old_metrics = set(self._source_plugin_initial_configured_metrics[source_id])
+        current_metrics = set(plugin.get_configured_metrics())
+
+        logger.debug(f"old metrics: {old_metrics}")
+        logger.debug(f"current metrics: {current_metrics}")
+        logger.debug(f"diff: {current_metrics - old_metrics}")
+
+        return list(current_metrics - old_metrics)

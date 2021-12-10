@@ -253,13 +253,20 @@ class Configurator(Client):
 
     async def save_source_config(
         self, source_id, session_key: str, unload_plugin=False
-    ):
+    ) -> Sequence[str]:
         source_plugin = await self.get_source_plugin(source_id, session_key)
         if source_plugin:
             await self.set_config(source_id, await source_plugin.get_config())
 
+            session = self.get_session(session_key)
+            metrics = session.get_added_metrics(source_id)
+
             if unload_plugin:
                 self.unload_source_plugin(source_id, session_key)
+
+            return metrics
+
+        return []
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):
