@@ -324,12 +324,13 @@ async def save_source_config(request: Request):
         raise HTTPBadRequest(reason="Missing session key")
 
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(
+    metrics = await configurator.save_source_config(
         source_id=source_id, session_key=session_key, unload_plugin=True
     )
 
     return Response(
-        text=json.dumps({"status": "success"}), content_type="application/json"
+        text=json.dumps({"status": "success", "metrics": metrics}),
+        content_type="application/json",
     )
 
 
@@ -355,14 +356,15 @@ async def save_config_and_reconfigure_source(request: Request):
         raise HTTPBadRequest(reason="Missing session key")
 
     configurator: Configurator = request.app["metricq_client"]
-    await configurator.save_source_config(
+    metrics = await configurator.save_source_config(
         source_id=source_id, session_key=session_key, unload_plugin=True
     )
     if not request.app["settings"].dry_run:
         await configurator.reconfigure_client(client_id=source_id)
 
     return Response(
-        text=json.dumps({"status": "success"}), content_type="application/json"
+        text=json.dumps({"status": "success", "metrics": metrics}),
+        content_type="application/json",
     )
 
 
@@ -443,4 +445,6 @@ async def post_reset_session(request: Request):
 
     session.unload_source_plugin(source_id)
 
-    return Response(text=json.dumps({"status": "success"}), content_type="application/json")
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
