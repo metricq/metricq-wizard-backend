@@ -20,7 +20,7 @@
 import importlib
 from typing import Dict, Optional
 
-from metricq import get_logger
+from metricq import get_logger, Timestamp
 
 from metricq_wizard_backend.metricq.source_plugin import (
     SourcePlugin,
@@ -39,6 +39,8 @@ class UserSession:
         self.session_key: str = session_key
         self._source_plugins: Dict[str, SourcePlugin] = {}
         self._source_config_revision: Dict[str, str] = {}
+        self._source_plugin_creation_time: Dict[str, Timestamp] = {}
+        self.creation_time = Timestamp.now()
 
     def create_source_plugin(
         self,
@@ -57,6 +59,7 @@ class UserSession:
                     source_config, rpc_function
                 )
                 self._source_config_revision[source_id] = source_config.get("_rev")
+                self._source_plugin_creation_time[source_id] = Timestamp.now()
             else:
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."
@@ -74,3 +77,11 @@ class UserSession:
     def unload_source_plugin(self, source_id):
         if source_id in self._source_plugins:
             del self._source_plugins[source_id]
+            del self._source_config_revision[source_id]
+            del self._source_plugin_creation_time[source_id]
+
+    def can_save_source_config(self, source_id: str, current_rev: str) -> bool:
+        return self._source_config_revision.get(source_id, current_rev) == current_rev
+
+    def get_source_plugin_creation_time(self, source_id) -> Optional[Timestamp]:
+        return self._source_plugin_creation_time.get(source_id)

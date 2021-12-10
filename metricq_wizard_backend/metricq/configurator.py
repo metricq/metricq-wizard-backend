@@ -30,6 +30,7 @@ from metricq.logging import get_logger
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
 from metricq_wizard_backend.metricq.session_manager import UserSessionManager
+from metricq_wizard_backend.metricq.session_manager import UserSession
 from metricq_wizard_backend.metricq.source_plugin import SourcePlugin
 from metricq_wizard_backend.version import version as __version__  # noqa: F401
 
@@ -231,6 +232,24 @@ class Configurator(Client):
     def unload_source_plugin(self, source_id, session_key):
         session = self.user_session_manager.get_user_session(session_key)
         session.unload_source_plugin(source_id)
+
+    def get_session(
+        self, session_key: str
+    ) -> UserSession:
+        session = self.user_session_manager.get_user_session(session_key)
+
+        return session
+
+    async def get_session_state(self, session_key: str, source_id: str) -> bool:
+        config = await self.couchdb_db_config[source_id]
+        if "type" not in config:
+            logger.error(f"No type for source {source_id} provided.")
+            return None
+
+        session = self.user_session_manager.get_user_session(session_key)
+
+        return session.can_save_source_config(source_id, config.get("_rev"))
+
 
     async def save_source_config(
         self, source_id, session_key: str, unload_plugin=False

@@ -405,3 +405,42 @@ async def save_source_raw_config(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
+
+
+# @swagger_path("api_doc/save_source_raw_config.yaml")
+@routes.get("/api/source/{source_id}/session")
+async def get_session_state(request: Request):
+    source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
+    configurator: Configurator = request.app["metricq_client"]
+
+    session = configurator.get_session(session_key)
+    response = {
+        "valid": await configurator.get_session_state(session_key, source_id),
+        "creation_time": session.creation_time.datetime.isoformat(),
+    }
+    plugin_creation_time = session.get_source_plugin_creation_time(source_id)
+    if plugin_creation_time is not None:
+        response["plugin_creation_time"] = plugin_creation_time.datetime.isoformat()
+
+    return Response(text=json.dumps(response), content_type="application/json")
+
+
+# @swagger_path("api_doc/save_source_raw_config.yaml")
+@routes.post("/api/source/{source_id}/session/reset")
+async def post_reset_session(request: Request):
+    source_id = request.match_info["source_id"]
+    session_key = request.query.get("session")
+    if session_key is None:
+        raise HTTPBadRequest(reason="Missing session key")
+
+    configurator: Configurator = request.app["metricq_client"]
+
+    session = configurator.get_session(session_key)
+
+    session.unload_source_plugin(source_id)
+
+    return Response(text=json.dumps({"status": "success"}), content_type="application/json")
