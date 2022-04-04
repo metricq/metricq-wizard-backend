@@ -17,3 +17,6 @@ class Settings(BaseSettings):
     couchdb_user = "admin"
     couchdb_password = "admin"
     dry_run = False
+    
+    class Config:
+        env_file = '.env'
