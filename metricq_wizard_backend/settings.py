@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     couchdb_url: AnyHttpUrl = "http://localhost:5984"
     couchdb_user = "admin"
     couchdb_password = "admin"
+    rabbitmq_url = "http://localhost:15672"
     rabbitmq_user = "admin"
     rabbitmq_password = "admin"
     dry_run = False

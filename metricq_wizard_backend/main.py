@@ -45,6 +45,9 @@ async def startup(app: web.Application):
         settings.couchdb_url,
         settings.couchdb_user,
         settings.couchdb_password,
+        settings.rabbitmq_url,
+        settings.rabbitmq_user,
+        settings.rabbitmq_password,
         event_loop=app.loop,
     )
     app["metricq_client"] = client

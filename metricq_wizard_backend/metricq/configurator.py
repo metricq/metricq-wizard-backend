@@ -20,13 +20,14 @@
 import hashlib
 import json
 from asyncio import Lock
-from datetime import datetime
 from itertools import islice
 from typing import Any, Dict, Optional, Sequence, Union
 
+import aiohttp
 from aiocouch import CouchDB, database
 from metricq import Client
 from metricq.logging import get_logger
+from aiocache import SimpleMemoryCache, cached
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
 from metricq_wizard_backend.metricq.session_manager import UserSessionManager
@@ -52,6 +53,9 @@ class Configurator(Client):
         couchdb_url,
         couchdb_user,
         couchdb_password,
+        rabbitmq_url,
+        rabbitmq_user,
+        rabbitmq_password,
         event_loop,
     ):
         super().__init__(
@@ -65,6 +69,10 @@ class Configurator(Client):
             password=couchdb_password,
             loop=self.event_loop,
         )
+
+        self.rabbitmq_url = rabbitmq_url
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
 
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
@@ -84,6 +92,20 @@ class Configurator(Client):
 
         # After that, we do the MetricQ connection stuff
         await super().connect()
+
+    @cached(ttl=5 * 60, cache=SimpleMemoryCache)
+    async def fetch_exchange(self):
+        exchange = {}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                    self.rabbitmq_url + '/api/exchanges/data/metricq.data/bindings/source',
+                    auth=aiohttp.BasicAuth(self.rabbitmq_user, self.rabbitmq_password)) as resp:
+                resp = await resp.json()
+                for binding in resp:
+                    routing_key = binding['routing_key']
+                    destination = binding['destination'][:-5]
+                    exchange.setdefault(routing_key, []).append(destination)
+        return exchange
 
     async def fetch_metadata(self, metric_ids):
         return {

@@ -20,9 +20,11 @@
 import json
 import aiohttp
 import metricq
+
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
+
 from metricq_wizard_backend.metricq import Configurator
 from metricq_wizard_backend.settings import Settings
 
@@ -54,18 +56,18 @@ async def get_metric_metadata(request: Request):
 
     await backward(configurator, metric, nodes, agents, edges, layout, x_depth - 1, y_depth)
 
-    exchange = {}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-                'https://rabbitmq.metricq.zih.tu-dresden.de/api/exchanges/data/metricq.data/bindings/source',
-                auth=aiohttp.BasicAuth(settings.rabbitmq_user, settings.rabbitmq_password)) as resp:
-            resp = await resp.json()
-            for binding in resp:
-                routing_key = binding['routing_key']
-                destination = binding['destination'][:-5]
-                exchange.setdefault(routing_key, []).append(destination)
+    #exchange = {}
+    #async with aiohttp.ClientSession() as session:
+    #    async with session.get(
+    #            'https://rabbitmq.metricq.zih.tu-dresden.de/api/exchanges/data/metricq.data/bindings/source',
+    #            auth=aiohttp.BasicAuth(settings.rabbitmq_user, settings.rabbitmq_password)) as resp:
+    #        resp = await resp.json()
+    #        for binding in resp:
+    #            routing_key = binding['routing_key']
+    #            destination = binding['destination'][:-5]
+    #            exchange.setdefault(routing_key, []).append(destination)
 
-    await forward(configurator, metric, nodes, agents, edges, layout, x_depth + 1, y_depth, exchange)
+    await forward(configurator, metric, nodes, agents, edges, layout, x_depth + 1, y_depth)
 
     answer['nodes'] = {**nodes, **agents}
     answer['edges'] = edges
@@ -93,7 +95,7 @@ async def backward(configurator, metric, nodes, agents, edges, layout, x_depth, 
         if metric_source.endswith("combinator"):
             json_ends = []
             metric_source_dict = (await configurator.get_configs([metric_source]))[metric_source]['metrics'][metric]
-            await searchJson(json_ends, metric_source_dict['expression'])
+            await seearch_json(json_ends, metric_source_dict['expression'])
             for metric_summand in json_ends:
                 try:
                     if metric_summand not in nodes:
@@ -121,9 +123,11 @@ async def backward(configurator, metric, nodes, agents, edges, layout, x_depth, 
             edges[metric_primary + 'to' + metric_source] = {'source': metric_primary, 'target': metric_source}
 
 
-async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y_depth, exchange):
+async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y_depth):
+    exchange = await configurator.fetch_exchange()
     if metric in exchange:
-        for binding in exchange[metric]:
+        bindings = exchange[metric]
+        for binding in bindings:
             if binding not in agents:
                 if x_depth not in y_depth:
                     y_depth[x_depth] = 0
@@ -137,7 +141,7 @@ async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y
                 if binding.endswith('combinator'):
                     for key, value in binding_dict.items():
                         json_ends = []
-                        await searchJson(json_ends, value['expression'])
+                        await seearch_json(json_ends, value['expression'])
                         for end in json_ends:
                             if metric == end:
                                 if key not in nodes:
@@ -148,8 +152,7 @@ async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y
                                     create_node(nodes, key)
                                     layout[key] = {'x': (x_depth + 1) * 100, 'y': y_depth[x_depth + 1]}
                                 edges[binding + 'to' + key] = {'source': binding, 'target': key}
-                                await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth,
-                                              exchange)
+                                await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth)
                 elif binding.endswith('aggregator'):
                     for key, value in binding_dict.items():
                         if metric == value['source']:
@@ -161,20 +164,19 @@ async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y
                                 create_node(nodes, key)
                                 layout[key] = {'x': (x_depth + 1) * 100, 'y': y_depth[x_depth + 1]}
                             edges[binding + 'to' + key] = {'source': binding, 'target': key}
-                            await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth,
-                                          exchange)
+                            await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth)
 
 
-async def searchJson(json_ends, expression):
+async def seearch_json(json_ends, expression):
     if not isinstance(expression, dict) and not isinstance(expression, list):
         json_ends.append(expression)
     else:
         if isinstance(expression, dict):
             for key, value in expression.items():
-                await searchJson(json_ends, value)
+                await seearch_json(json_ends, value)
         elif isinstance(expression, list):
             for item in expression:
-                await searchJson(json_ends, item)
+                await seearch_json(json_ends, item)
 
 
 def create_node(nodes, new_metric, color='#4aba4a'):
