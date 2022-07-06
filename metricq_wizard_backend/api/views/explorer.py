@@ -18,15 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
-import aiohttp
 import metricq
+from collections import defaultdict
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 
 from metricq_wizard_backend.metricq import Configurator
-from metricq_wizard_backend.settings import Settings
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
@@ -39,155 +38,135 @@ async def get_metric_metadata(request: Request):
     configurator: Configurator = request.app["metricq_client"]
     metric = request.match_info["metric"]
 
-    settings: Settings = request.app["settings"]
+    network = Network(metric, configurator)
 
-    answer = {}
-    nodes = {}
-    agents = {}
-    edges = {}
-    layout = {}
-
-    x_depth = 0
-    y_depth = {0: 0}
-
-    nodes[metric] = {'name': metric, 'type': 'circle'}
-    create_node(nodes, metric, '#417534')
-    layout[metric] = {'x': x_depth, 'y': y_depth[x_depth]}
-
-    await backward(configurator, metric, nodes, agents, edges, layout, x_depth - 1, y_depth)
-
-    #exchange = {}
-    #async with aiohttp.ClientSession() as session:
-    #    async with session.get(
-    #            'https://rabbitmq.metricq.zih.tu-dresden.de/api/exchanges/data/metricq.data/bindings/source',
-    #            auth=aiohttp.BasicAuth(settings.rabbitmq_user, settings.rabbitmq_password)) as resp:
-    #        resp = await resp.json()
-    #        for binding in resp:
-    #            routing_key = binding['routing_key']
-    #            destination = binding['destination'][:-5]
-    #            exchange.setdefault(routing_key, []).append(destination)
-
-    await forward(configurator, metric, nodes, agents, edges, layout, x_depth + 1, y_depth)
-
-    answer['nodes'] = {**nodes, **agents}
-    answer['edges'] = edges
-    answer['layout'] = layout
+    await network.backward(metric, 0)
+    await network.forward(metric, 0)
 
     return Response(
-        text=json.dumps(answer),
+        text=json.dumps(network.return_result()),
         content_type="application/json",
     )
 
 
-async def backward(configurator, metric, nodes, agents, edges, layout, x_depth, y_depth):
-    metadata_dict = await configurator.fetch_metadata([metric])
-    metric_metadata = metadata_dict[next(iter(metadata_dict))]
-    metric_id = metric_metadata["_id"]
-    metric_source = metric_metadata["source"]
-    y_depth[x_depth] = 0
-    if metric_source not in agents:
-        create_agent(agents, metric_source)
-        layout[metric_source] = {'x': x_depth * 100, 'y': y_depth[x_depth]}
+class Network:
+    def __init__(self, original_metric, configurator):
+        self.configurator = configurator
+        self.nodes = {}
+        self.edges = {}
+        self.layout = {}
+        self.y_depth = defaultdict(int)
+        self.add_metric(original_metric, "#417534")
+        self.add_layout(original_metric, 0)
 
-    edges[metric_source + 'to' + metric_id] = {'source': metric_source, 'target': metric_id}
+    def add_metric(self, new_metric, color="#4aba4a"):
+        self.nodes[new_metric] = {
+            "name": new_metric,
+            "type": "circle",
+            "color": color,
+            "direction": "north",
+        }
 
-    if metric_source.startswith("transformer"):
-        if metric_source.endswith("combinator"):
-            json_ends = []
-            metric_source_dict = (await configurator.get_configs([metric_source]))[metric_source]['metrics'][metric]
-            await seearch_json(json_ends, metric_source_dict['expression'])
-            for metric_summand in json_ends:
-                try:
-                    if metric_summand not in nodes:
-                        create_node(nodes, metric_summand)
-                        if x_depth - 1 not in y_depth:
-                            y_depth[x_depth - 1] = 0
-                        else:
-                            y_depth[x_depth - 1] += 75
-                        layout[metric_summand] = {'x': (x_depth - 1) * 100, 'y': y_depth[x_depth - 1]}
-                        await backward(configurator, metric_summand, nodes, agents, edges, layout, x_depth - 2, y_depth)
-                    edges[metric_summand + 'to' + metric_source] = {'source': metric_summand, 'target': metric_source}
-                except Exception:
-                    if metric_summand in nodes:
-                        del nodes[metric_summand]
-        elif metric_source.endswith("aggregator"):
-            metric_primary = metric_metadata["primary"]
-            if metric_primary not in nodes:
-                create_node(nodes, metric_primary)
-                if x_depth - 1 not in y_depth:
-                    y_depth[x_depth - 1] = 0
-                else:
-                    y_depth[x_depth - 1] += 75
-                layout[metric_primary] = {'x': (x_depth - 1) * 100, 'y': y_depth[x_depth - 1]}
-                await backward(configurator, metric_primary, nodes, agents, edges, layout, x_depth - 2, y_depth)
-            edges[metric_primary + 'to' + metric_source] = {'source': metric_primary, 'target': metric_source}
+    def add_agent(self, new_agent):
+        if new_agent.endswith("combinator"):
+            color = "#55b1e3"
+        elif new_agent.endswith("aggregator"):
+            color = "#5b90bf"
+        else:
+            color = "#3abec8"
+        self.nodes[new_agent] = {
+            "name": new_agent,
+            "type": "rect",
+            "color": color,
+            "direction": "south",
+        }
 
+    def add_edge(self, source, target):
+        self.edges[source + "to" + target] = {"source": source, "target": target}
 
-async def forward(configurator, metric, nodes, agents, edges, layout, x_depth, y_depth):
-    exchange = await configurator.fetch_exchange()
-    if metric in exchange:
-        bindings = exchange[metric]
-        for binding in bindings:
-            if binding not in agents:
-                if x_depth not in y_depth:
-                    y_depth[x_depth] = 0
-                else:
-                    y_depth[x_depth] += 75
-                create_agent(agents, binding)
-                layout[binding] = {'x': x_depth * 100, 'y': y_depth[x_depth]}
-            edges[metric + 'to' + binding] = {'source': metric, 'target': binding}
-            if binding.startswith('transformer'):
-                binding_dict = (await configurator.get_configs([binding]))[binding]['metrics']
-                if binding.endswith('combinator'):
-                    for key, value in binding_dict.items():
-                        json_ends = []
-                        await seearch_json(json_ends, value['expression'])
-                        for end in json_ends:
-                            if metric == end:
-                                if key not in nodes:
-                                    if x_depth + 1 not in y_depth:
-                                        y_depth[x_depth + 1] = 0
-                                    else:
-                                        y_depth[x_depth + 1] += 75
-                                    create_node(nodes, key)
-                                    layout[key] = {'x': (x_depth + 1) * 100, 'y': y_depth[x_depth + 1]}
-                                edges[binding + 'to' + key] = {'source': binding, 'target': key}
-                                await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth)
-                elif binding.endswith('aggregator'):
-                    for key, value in binding_dict.items():
-                        if metric == value['source']:
-                            if key not in nodes:
-                                if x_depth + 1 not in y_depth:
-                                    y_depth[x_depth + 1] = 0
-                                else:
-                                    y_depth[x_depth + 1] += 75
-                                create_node(nodes, key)
-                                layout[key] = {'x': (x_depth + 1) * 100, 'y': y_depth[x_depth + 1]}
-                            edges[binding + 'to' + key] = {'source': binding, 'target': key}
-                            await forward(configurator, key, nodes, agents, edges, layout, x_depth + 2, y_depth)
+    def add_layout(self, target, x_depth):
+        self.layout[target] = {"x": x_depth * 75, "y": self.y_depth[x_depth] * 75}
+        self.y_depth[x_depth] += 1
 
+    def return_result(self):
+        return {"nodes": self.nodes, "edges": self.edges, "layout": self.layout}
 
-async def seearch_json(json_ends, expression):
-    if not isinstance(expression, dict) and not isinstance(expression, list):
-        json_ends.append(expression)
-    else:
-        if isinstance(expression, dict):
-            for key, value in expression.items():
-                await seearch_json(json_ends, value)
-        elif isinstance(expression, list):
-            for item in expression:
-                await seearch_json(json_ends, item)
+    async def backward(self, metric, x_depth):
+        metadata_dict = await self.configurator.fetch_metadata([metric])
+        metric_metadata = metadata_dict[next(iter(metadata_dict))]
+        metric_id = metric_metadata["_id"]
+        metric_source = metric_metadata["source"]
+        if metric_source not in self.nodes:
+            self.add_agent(metric_source)
+            self.add_layout(metric_source, x_depth - 1)
 
+        self.add_edge(metric_source, metric_id)
 
-def create_node(nodes, new_metric, color='#4aba4a'):
-    nodes[new_metric] = {'name': new_metric, 'type': 'circle', 'color': color, 'direction': 'north'}
+        if metric_source.startswith("transformer"):
+            if metric_source.endswith("combinator"):
+                metric_source_dict = (
+                    await self.configurator.get_configs([metric_source])
+                )[metric_source]["metrics"][metric]
+                json_ends = await self.search_json([], metric_source_dict["expression"])
 
+                for metric_summand in json_ends:
+                    try:
+                        if metric_summand not in self.nodes:
+                            self.add_metric(metric_summand)
+                            await self.backward(metric_summand, x_depth - 2)
+                            self.add_layout(metric_summand, x_depth - 2)
+                        self.add_edge(metric_summand, metric_source)
+                    except Exception:
+                        if metric_summand in self.nodes:
+                            del self.nodes[metric_summand]
+            elif metric_source.endswith("aggregator"):
+                metric_primary = metric_metadata["primary"]
+                if metric_primary not in self.nodes:
+                    self.add_metric(metric_primary)
+                    self.add_layout(metric_primary, x_depth - 2)
+                    await self.backward(metric_primary, x_depth - 2)
+                self.add_edge(metric_primary, metric_source)
 
-def create_agent(agents, new_agent):
-    if new_agent.endswith('combinator'):
-        color = '#55b1e3'
-    elif new_agent.endswith('aggregator'):
-        color = '#5b90bf'
-    else:
-        color = '#3abec8'
-    agents[new_agent] = {'name': new_agent, 'type': 'rect', 'color': color, 'direction': 'south'}
+    async def forward(self, metric, x_depth):
+        exchange = await self.configurator.fetch_bindings()
+        if metric in exchange:
+            bindings = exchange[metric]
+            for binding in bindings:
+                if binding not in self.nodes:
+                    self.add_agent(binding)
+                    self.add_layout(binding, x_depth + 1)
+                self.add_edge(metric, binding)
+                if binding.startswith("transformer"):
+                    binding_dict = (await self.configurator.get_configs([binding]))[
+                        binding
+                    ]["metrics"]
+                    if binding.endswith("combinator"):
+                        for key, value in binding_dict.items():
+                            json_ends = await self.search_json([], value["expression"])
+                            for end in json_ends:
+                                if metric == end:
+                                    if key not in self.nodes:
+                                        self.add_metric(key)
+                                        self.add_layout(key, x_depth + 2)
+                                    self.add_edge(binding, key)
+                                    await self.forward(key, x_depth + 2)
+                    elif binding.endswith("aggregator"):
+                        for key, value in binding_dict.items():
+                            if metric == value["source"]:
+                                if key not in self.nodes:
+                                    self.add_metric(key)
+                                    self.add_layout(key, x_depth + 2)
+                                self.add_edge(binding, key)
+                                await self.forward(key, x_depth + 2)
+
+    async def search_json(self, json_ends, expression):
+        if not isinstance(expression, dict) and not isinstance(expression, list):
+            json_ends.append(expression)
+        else:
+            if isinstance(expression, dict):
+                for key, value in expression.items():
+                    await self.search_json(json_ends, value)
+            elif isinstance(expression, list):
+                for item in expression:
+                    await self.search_json(json_ends, item)
+        return json_ends

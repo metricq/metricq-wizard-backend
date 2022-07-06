@@ -22,6 +22,7 @@ import json
 from asyncio import Lock
 from itertools import islice
 from typing import Any, Dict, Optional, Sequence, Union
+from collections import defaultdict
 
 import aiohttp
 from aiocouch import CouchDB, database
@@ -38,6 +39,8 @@ from metricq_wizard_backend.version import version as __version__  # noqa: F401
 logger = get_logger()
 
 logger.setLevel("INFO")
+
+
 # Use this if we ever use threads
 # logger.handlers[0].formatter = logging.Formatter(fmt='%(asctime)s %(threadName)-16s %(levelname)-8s %(message)s')
 # logger.handlers[0].formatter = logging.Formatter(
@@ -94,18 +97,18 @@ class Configurator(Client):
         await super().connect()
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
-    async def fetch_exchange(self):
-        exchange = {}
+    async def fetch_bindings(self):
+        bindings = defaultdict(list)
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                    self.rabbitmq_url + '/api/exchanges/data/metricq.data/bindings/source',
-                    auth=aiohttp.BasicAuth(self.rabbitmq_user, self.rabbitmq_password)) as resp:
-                resp = await resp.json()
-                for binding in resp:
-                    routing_key = binding['routing_key']
-                    destination = binding['destination'][:-5]
-                    exchange.setdefault(routing_key, []).append(destination)
-        return exchange
+                self.rabbitmq_url + "/api/exchanges/data/metricq.data/bindings/source",
+                auth=aiohttp.BasicAuth(self.rabbitmq_user, self.rabbitmq_password),
+            ) as resp:
+                for binding in await resp.json():
+                    metric = binding["routing_key"]
+                    consumer = binding["destination"][:-5]
+                    bindings[metric].append(consumer)
+        return bindings
 
     async def fetch_metadata(self, metric_ids):
         return {
@@ -255,9 +258,7 @@ class Configurator(Client):
         session = self.user_session_manager.get_user_session(session_key)
         session.unload_source_plugin(source_id)
 
-    def get_session(
-        self, session_key: str
-    ) -> UserSession:
+    def get_session(self, session_key: str) -> UserSession:
         session = self.user_session_manager.get_user_session(session_key)
 
         return session
@@ -271,7 +272,6 @@ class Configurator(Client):
         session = self.user_session_manager.get_user_session(session_key)
 
         return session.can_save_source_config(source_id, config.get("_rev"))
-
 
     async def save_source_config(
         self, source_id, session_key: str, unload_plugin=False
