@@ -107,6 +107,11 @@ class Configurator(Client):
                     bindings[metric].append(consumer)
         return bindings
 
+    async def fetch_consumers(self, metric: str):
+        bindings = await self.fetch_bindings()
+
+        return bindings.get(metric, [])
+
     async def fetch_metadata(self, metric_ids):
         return {
             doc.id: doc.data

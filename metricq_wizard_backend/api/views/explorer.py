@@ -22,7 +22,7 @@ import metricq
 from collections import defaultdict
 
 from aiohttp.web_request import Request
-from aiohttp.web_response import Response
+from aiohttp.web import json_response
 from aiohttp.web_routedef import RouteTableDef
 
 from metricq_wizard_backend.metricq import Configurator
@@ -40,13 +40,7 @@ async def get_metric_metadata(request: Request):
 
     network = Network(metric, configurator)
 
-    await network.backward(metric, 0)
-    await network.forward(metric, 0)
-
-    return Response(
-        text=json.dumps(network.return_result()),
-        content_type="application/json",
-    )
+    return json_response(await network.search())
 
 
 class Network:
@@ -58,6 +52,7 @@ class Network:
         self.y_depth = defaultdict(int)
         self.add_metric(original_metric, "#417534")
         self.add_layout(original_metric, 0)
+        self.original_metric = original_metric
 
     def add_metric(self, new_metric, color="#4aba4a"):
         self.nodes[new_metric] = {
@@ -88,85 +83,97 @@ class Network:
         self.layout[target] = {"x": x_depth * 75, "y": self.y_depth[x_depth] * 75}
         self.y_depth[x_depth] += 1
 
-    def return_result(self):
+    def insert_metric(self, metric: str, token: str, x_depth: int):
+        if metric not in self.nodes:
+            self.add_metric(metric)
+            self.add_layout(metric, x_depth)
+        self.add_edge(token, metric)
+
+    async def search(self):
+        await self.search_backwards(self.original_metric, 0)
+        await self.search_forwards(self.original_metric, 0)
+
         return {"nodes": self.nodes, "edges": self.edges, "layout": self.layout}
 
-    async def backward(self, metric, x_depth):
+    async def search_backwards(self, metric, x_depth):
         metadata_dict = await self.configurator.fetch_metadata([metric])
-        metric_metadata = metadata_dict[next(iter(metadata_dict))]
-        metric_id = metric_metadata["_id"]
-        metric_source = metric_metadata["source"]
-        if metric_source not in self.nodes:
-            self.add_agent(metric_source)
-            self.add_layout(metric_source, x_depth - 1)
+        metadata = metadata_dict[next(iter(metadata_dict))]
+        metric_id = metadata["_id"]
+        source_token = metadata["source"]
+        if source_token not in self.nodes:
+            self.add_agent(source_token)
+            self.add_layout(source_token, x_depth - 1)
 
-        self.add_edge(metric_source, metric_id)
+        self.add_edge(source_token, metric_id)
 
-        if metric_source.startswith("transformer"):
-            if metric_source.endswith("combinator"):
-                metric_source_dict = (
-                    await self.configurator.get_configs([metric_source])
-                )[metric_source]["metrics"][metric]
-                json_ends = await self.search_json([], metric_source_dict["expression"])
+        if source_token.startswith("transformer"):
+            if source_token.endswith("combinator"):
+                await self.search_combinator_backwards(metric, source_token, x_depth)
+            elif source_token.endswith("aggregator"):
+                await self.search_aggregator_backwards(
+                    metadata["primary"], source_token, x_depth
+                )
 
-                for metric_summand in json_ends:
-                    try:
-                        if metric_summand not in self.nodes:
-                            self.add_metric(metric_summand)
-                            await self.backward(metric_summand, x_depth - 2)
-                            self.add_layout(metric_summand, x_depth - 2)
-                        self.add_edge(metric_summand, metric_source)
-                    except Exception:
-                        if metric_summand in self.nodes:
-                            del self.nodes[metric_summand]
-            elif metric_source.endswith("aggregator"):
-                metric_primary = metric_metadata["primary"]
-                if metric_primary not in self.nodes:
-                    self.add_metric(metric_primary)
-                    self.add_layout(metric_primary, x_depth - 2)
-                    await self.backward(metric_primary, x_depth - 2)
-                self.add_edge(metric_primary, metric_source)
+    async def search_combinator_backwards(self, metric: str, token: str, x_depth: int):
+        config = (await self.configurator.get_configs([token]))[token]["metrics"][
+            metric
+        ]
 
-    async def forward(self, metric, x_depth):
-        exchange = await self.configurator.fetch_bindings()
-        if metric in exchange:
-            bindings = exchange[metric]
-            for binding in bindings:
-                if binding not in self.nodes:
-                    self.add_agent(binding)
-                    self.add_layout(binding, x_depth + 1)
-                self.add_edge(metric, binding)
-                if binding.startswith("transformer"):
-                    binding_dict = (await self.configurator.get_configs([binding]))[
-                        binding
-                    ]["metrics"]
-                    if binding.endswith("combinator"):
-                        for key, value in binding_dict.items():
-                            json_ends = await self.search_json([], value["expression"])
-                            for end in json_ends:
-                                if metric == end:
-                                    if key not in self.nodes:
-                                        self.add_metric(key)
-                                        self.add_layout(key, x_depth + 2)
-                                    self.add_edge(binding, key)
-                                    await self.forward(key, x_depth + 2)
-                    elif binding.endswith("aggregator"):
-                        for key, value in binding_dict.items():
-                            if metric == value["source"]:
-                                if key not in self.nodes:
-                                    self.add_metric(key)
-                                    self.add_layout(key, x_depth + 2)
-                                self.add_edge(binding, key)
-                                await self.forward(key, x_depth + 2)
+        for input in self.parse_combinator_expression(config["expression"]):
+            try:
+                if input not in self.nodes:
+                    self.add_metric(input)
+                    await self.search_backwards(input, x_depth - 2)
+                    self.add_layout(input, x_depth - 2)
+                self.add_edge(input, token)
+            except Exception:
+                if input in self.nodes:
+                    del self.nodes[input]
 
-    async def search_json(self, json_ends, expression):
+    async def search_aggregator_backwards(self, metric: str, token: str, x_depth: int):
+        if metric not in self.nodes:
+            self.add_metric(metric)
+            self.add_layout(metric, x_depth - 2)
+            await self.search_backwards(metric, x_depth - 2)
+        self.add_edge(metric, token)
+
+    async def search_forwards(self, metric, x_depth):
+        for token in await self.configurator.fetch_consumers(metric):
+            if token not in self.nodes:
+                self.add_agent(token)
+                self.add_layout(token, x_depth + 1)
+            self.add_edge(metric, token)
+
+            if token.startswith("transformer"):
+                if token.endswith("combinator"):
+                    await self.search_combinator_forwards(metric, token, x_depth)
+                elif token.endswith("aggregator"):
+                    await self.search_aggregator_forwards(metric, token, x_depth)
+
+    async def search_aggregator_forwards(self, metric: str, token: str, x_depth: int):
+        metrics = (await self.configurator.get_configs([token]))[token]["metrics"]
+
+        for aggregated_metric, config in metrics.items():
+            if metric == config["source"]:
+                self.insert_metric(aggregated_metric, token, x_depth + 2)
+                await self.search_forwards(aggregated_metric, x_depth + 2)
+
+    async def search_combinator_forwards(self, metric: str, token: str, x_depth: int):
+        metrics = (await self.configurator.get_configs([token]))[token]["metrics"]
+
+        for combined_metric, config in metrics.items():
+            if metric in self.parse_combinator_expression(config["expression"]):
+                self.insert_metric(combined_metric, token, x_depth + 2)
+                await self.search_forwards(combined_metric, x_depth + 2)
+
+    def parse_combinator_expression(self, expression, inputs=[]):
         if not isinstance(expression, dict) and not isinstance(expression, list):
-            json_ends.append(expression)
+            inputs.append(expression)
         else:
             if isinstance(expression, dict):
-                for key, value in expression.items():
-                    await self.search_json(json_ends, value)
+                for value in expression.values():
+                    self.parse_combinator_expression(value, inputs)
             elif isinstance(expression, list):
                 for item in expression:
-                    await self.search_json(json_ends, item)
-        return json_ends
+                    self.parse_combinator_expression(item, inputs)
+        return inputs
