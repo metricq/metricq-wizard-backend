@@ -166,7 +166,10 @@ class Network:
                 self.insert_metric(combined_metric, token, x_depth + 2)
                 await self.search_forwards(combined_metric, x_depth + 2)
 
-    def parse_combinator_expression(self, expression, inputs=[]):
+    def parse_combinator_expression(self, expression, inputs=None):
+        if inputs is None:
+            inputs = []
+
         if not isinstance(expression, dict) and not isinstance(expression, list):
             inputs.append(expression)
         else:
