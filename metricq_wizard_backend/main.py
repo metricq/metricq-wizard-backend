@@ -48,7 +48,6 @@ async def startup(app: web.Application):
         settings.rabbitmq_url,
         settings.rabbitmq_user,
         settings.rabbitmq_password,
-        event_loop=app.loop,
     )
     app["metricq_client"] = client
     await client.connect()

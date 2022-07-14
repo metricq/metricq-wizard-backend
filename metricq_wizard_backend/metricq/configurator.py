@@ -59,18 +59,15 @@ class Configurator(Client):
         rabbitmq_url,
         rabbitmq_user,
         rabbitmq_password,
-        event_loop,
     ):
         super().__init__(
             token,
             management_url,
-            event_loop=event_loop,
         )
         self.couchdb_client: CouchDB = CouchDB(
             couchdb_url,
             user=couchdb_user,
             password=couchdb_password,
-            loop=self.event_loop,
         )
 
         self.rabbitmq_url = rabbitmq_url
