@@ -45,7 +45,6 @@ async def startup(app: web.Application):
         settings.couchdb_url,
         settings.couchdb_user,
         settings.couchdb_password,
-        event_loop=app.loop,
     )
     app["metricq_client"] = client
     await client.connect()
@@ -58,8 +57,8 @@ async def cleanup(app: web.Application):
     return
 
 
-async def create_app(loop=None):
-    app = web.Application(loop=loop)
+async def create_app():
+    app = web.Application()
     settings = Settings()
     app.update(settings=settings, static_root_url="/static/")
 

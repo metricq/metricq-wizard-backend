@@ -52,18 +52,15 @@ class Configurator(Client):
         couchdb_url,
         couchdb_user,
         couchdb_password,
-        event_loop,
     ):
         super().__init__(
             token,
             management_url,
-            event_loop=event_loop,
         )
         self.couchdb_client: CouchDB = CouchDB(
             couchdb_url,
             user=couchdb_user,
             password=couchdb_password,
-            loop=self.event_loop,
         )
 
         self.couchdb_db_config: database.Database = None
@@ -233,9 +230,7 @@ class Configurator(Client):
         session = self.user_session_manager.get_user_session(session_key)
         session.unload_source_plugin(source_id)
 
-    def get_session(
-        self, session_key: str
-    ) -> UserSession:
+    def get_session(self, session_key: str) -> UserSession:
         session = self.user_session_manager.get_user_session(session_key)
 
         return session
@@ -249,7 +244,6 @@ class Configurator(Client):
         session = self.user_session_manager.get_user_session(session_key)
 
         return session.can_save_source_config(source_id, config.get("_rev"))
-
 
     async def save_source_config(
         self, source_id, session_key: str, unload_plugin=False

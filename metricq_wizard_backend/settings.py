@@ -1,3 +1,4 @@
+from cryptography.fernet import Fernet
 from pydantic import AnyHttpUrl, BaseSettings, stricturl
 
 
@@ -9,7 +10,7 @@ class Settings(BaseSettings):
     name = "metricq-wizard-backend"
 
     # generate the auth key with cryptography.fernet.Fernet.generate_key() and set it via env
-    auth_key: str
+    auth_key: str = Fernet.generate_key()
     cookie_name = "metricq_wizard_backend"
     token = name
     amqp_server: stricturl(
@@ -19,6 +20,6 @@ class Settings(BaseSettings):
     couchdb_user = "admin"
     couchdb_password = "admin"
     dry_run = False
-    
+
     class Config:
-        env_file = '.env'
+        env_file = ".env"
