@@ -8,6 +8,7 @@ RUN apt-get update \
     wget \
     build-essential \
     rustc \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/* 
 
 USER metricq
@@ -23,7 +24,7 @@ FROM metricq/metricq-python:v4.2
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 RUN mkdir -p /home/metricq/wizard/config-backup
-COPY --from=BUILDER --chown=metricq:metricq /home/metricq/.local /home/metricq/.local
+COPY --from=builder --chown=metricq:metricq /home/metricq/.local /home/metricq/.local
 COPY --from=builder --chown=metricq:metricq /home/metricq/wizard/api_doc /home/metricq/wizard/api_doc
 COPY --from=builder --chown=metricq:metricq /home/metricq/wait-for-it.sh /home/metricq/
 
