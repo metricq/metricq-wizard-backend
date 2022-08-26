@@ -2,7 +2,13 @@ FROM metricq/metricq-python:v4.2 AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER root
-RUN apt-get update && apt-get install -y git build-essential wget
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    git \
+    wget \
+    build-essential \
+    rustc \
+    && rm -rf /var/lib/apt/lists/* 
 
 USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
