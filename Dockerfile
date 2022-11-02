@@ -1,26 +1,30 @@
-FROM metricq/metricq-python:latest AS builder
+FROM metricq/metricq-python:v4.2 AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
-ARG SETUPTOOLS_SCM_PRETEND_VERSION
-
 USER root
-RUN apt-get update && apt-get install -y git build-essential wget
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    git \
+    wget \
+    build-essential \
+    rustc \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/* 
 
 USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
 
 WORKDIR /home/metricq/wizard
-RUN . /home/metricq/venv/bin/activate && pip install .
-RUN . /home/metricq/venv/bin/activate && pip install gunicorn
+RUN pip install --user . gunicorn
+
 WORKDIR /home/metricq
 RUN wget -O wait-for-it.sh https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh && chmod +x wait-for-it.sh
 
-FROM metricq/metricq-python:latest
+FROM metricq/metricq-python:v4.2
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
-USER metricq
 RUN mkdir -p /home/metricq/wizard/config-backup
-COPY --from=builder --chown=metricq:metricq /home/metricq/venv /home/metricq/venv
+COPY --from=builder --chown=metricq:metricq /home/metricq/.local /home/metricq/.local
 COPY --from=builder --chown=metricq:metricq /home/metricq/wizard/api_doc /home/metricq/wizard/api_doc
 COPY --from=builder --chown=metricq:metricq /home/metricq/wait-for-it.sh /home/metricq/
 
@@ -48,4 +52,4 @@ ENV AMQP_SERVER=$amqp_server
 
 VOLUME /home/metricq/wizard/config-backup/
 
-CMD /home/metricq/wait-for-it.sh $wait_for_couchdb_url -- /home/metricq/wait-for-it.sh $wait_for_rabbitmq_url -- /home/metricq/venv/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker metricq_wizard_backend.main:create_app
+CMD /home/metricq/wait-for-it.sh $wait_for_couchdb_url -- /home/metricq/wait-for-it.sh $wait_for_rabbitmq_url -- /home/metricq/.local/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker metricq_wizard_backend.main:create_app
