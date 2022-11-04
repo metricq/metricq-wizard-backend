@@ -486,3 +486,20 @@ class Configurator(Client):
                     return True
 
         return False
+
+    async def get_host(self, client: str) -> str:
+        try:
+            response = await self.rpc(
+                "discover",
+                function="discover",
+                timeout=1,
+            )
+            return response["hostname"]
+        except TimeoutError as e:
+            raise RuntimeError(
+                f"Failed to get hostname for '{client}'. RPC timed out."
+            ) from e
+        except KeyError as e:
+            raise RuntimeError(
+                f"Failed to get hostname for '{client}'. Failed to parse response."
+            ) from e
