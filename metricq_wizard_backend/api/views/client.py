@@ -21,7 +21,7 @@ import json
 
 import metricq
 from aiohttp.web_request import Request
-from aiohttp.web_response import Response
+from aiohttp.web_response import Response, json_response
 from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
@@ -50,9 +50,9 @@ async def get_client_list(request: Request):
 async def get_client_host(request: Request):
     client_id = request.match_info["client_id"]
     configurator: Configurator = request.app["metricq_client"]
-    hostname = await configurator.get_host(client_id)
+    discover_data = await configurator.get_host(client_id)
 
-    return Response(json={"hostname": hostname})
+    return json_response(data=discover_data)
 
 
 @swagger_path("api_doc/reconfigure_client.yaml")

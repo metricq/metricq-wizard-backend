@@ -26,7 +26,7 @@ from collections import defaultdict
 
 import aiohttp
 from aiocouch import CouchDB, database
-from metricq import Client
+from metricq import Agent, Client
 from metricq.logging import get_logger
 from aiocache import SimpleMemoryCache, cached
 
@@ -489,12 +489,14 @@ class Configurator(Client):
 
     async def get_host(self, client: str) -> str:
         try:
-            response = await self.rpc(
-                "discover",
+            response = await Agent.rpc(
+                self,
                 function="discover",
-                timeout=1,
+                routing_key=f"{client}-rpc",
+                exchange=self._management_channel.default_exchange,
+                timeout=10,
             )
-            return response["hostname"]
+            return response
         except TimeoutError as e:
             raise RuntimeError(
                 f"Failed to get hostname for '{client}'. RPC timed out."
