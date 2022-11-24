@@ -17,6 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import datetime
 import hashlib
 import json
 from asyncio import Lock
@@ -512,6 +513,9 @@ class Configurator(Client):
         async def callback(from_token: str, **response):
             client = await self.couchdb_db_clients.create(from_token, exists_ok=True)
             client.update(response)
+            client["discoverTime"] = datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ).isoformat()
             await client.save()
 
         await Agent.rpc(
@@ -523,3 +527,20 @@ class Configurator(Client):
             response_callback=callback,
             cleanup_on_response=False,
         )
+
+    async def fetch_topology(self) -> JsonDict:
+        hosts = defaultdict(dict)
+
+        async for client_data in self.couchdb_db_clients.all_docs.docs():
+            try:
+                hosts[client_data["hostname"]].setdefault(
+                    "hostname", client_data["hostname"]
+                )
+                hosts[client_data["hostname"]].setdefault("clients", [])
+                hosts[client_data["hostname"]]["clients"].append(client_data.data)
+            except KeyError:
+                hosts["unknown"].setdefault("hostname", client_data["hostname"])
+                hosts["unknown"].setdefault("clients", [])
+                hosts["unknown"]["clients"].append(client_data.data)
+
+        return list(hosts.values())

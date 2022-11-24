@@ -33,26 +33,20 @@ logger.setLevel("DEBUG")
 routes = RouteTableDef()
 
 
-@swagger_path("api_doc/get_client_list.yaml")
-@routes.get("/api/clients")
-async def get_client_list(request: Request):
+@swagger_path("api_doc/discover_topology.yaml")
+@routes.post("/api/topology/discover")
+async def update_topology(request: Request):
     configurator: Configurator = request.app["metricq_client"]
-    config_dict = await configurator.get_configs()
+    await configurator.discover()
 
-    return Response(
-        text=json.dumps([{"id": config_id} for config_id in config_dict]),
-        content_type="application/json",
-    )
+    return json_response(data={"ok": "Processing update asynchronously."}, status=202)
 
 
-@swagger_path("api_doc/reconfigure_client.yaml")
-@routes.post("/api/client/{client_id}/reconfigure")
-async def reconfigure_client(request: Request):
-    client_id = request.match_info["client_id"]
+@swagger_path("api_doc/discover.yaml")
+@routes.get("/api/topology")
+async def get_topology(request: Request):
     configurator: Configurator = request.app["metricq_client"]
-    if not request.app["settings"].dry_run:
-        await configurator.reconfigure_client(client_id=client_id)
 
-    return Response(
-        text=json.dumps({"status": "success"}), content_type="application/json"
-    )
+    topology = await configurator.fetch_topology()
+
+    return json_response(data=topology)
