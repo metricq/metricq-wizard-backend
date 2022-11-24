@@ -45,6 +45,15 @@ async def get_client_list(request: Request):
     )
 
 
+@swagger_path("api_doc/discover.yaml")
+@routes.get("/api/discover")
+async def get_client_list(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+    await configurator.discover()
+
+    return Response(status=202)
+
+
 @swagger_path("api_doc/get_client_host.yaml")
 @routes.get("/api/client/{client_id}/host")
 async def get_client_host(request: Request):

@@ -40,6 +40,7 @@ logger = get_logger()
 
 logger.setLevel("INFO")
 
+JsonDict = dict[str, Any]
 
 # Use this if we ever use threads
 # logger.handlers[0].formatter = logging.Formatter(fmt='%(asctime)s %(threadName)-16s %(levelname)-8s %(message)s')
@@ -76,6 +77,7 @@ class Configurator(Client):
 
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
+        self.couchdb_db_clients: database.Database = None
 
         self.user_session_manager = UserSessionManager()
 
@@ -88,6 +90,10 @@ class Configurator(Client):
         )
         self.couchdb_db_metadata = await self.couchdb_client.create(
             "metadata", exists_ok=True
+        )
+
+        self.couchdb_db_clients = await self.couchdb_client.create(
+            "clients", exists_ok=True
         )
 
         # After that, we do the MetricQ connection stuff
@@ -501,7 +507,19 @@ class Configurator(Client):
             raise RuntimeError(
                 f"Failed to get hostname for '{client}'. RPC timed out."
             ) from e
-        except KeyError as e:
-            raise RuntimeError(
-                f"Failed to get hostname for '{client}'. Failed to parse response."
-            ) from e
+
+    async def discover(self) -> None:
+        async def callback(from_token: str, **response):
+            client = await self.couchdb_db_clients.create(from_token, exists_ok=True)
+            client.update(response)
+            await client.save()
+
+        await Agent.rpc(
+            self,
+            function="discover",
+            exchange=self._management_broadcast_exchange,
+            routing_key="discover",
+            timeout=30,
+            response_callback=callback,
+            cleanup_on_response=False,
+        )
