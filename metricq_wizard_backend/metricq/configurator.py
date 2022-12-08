@@ -22,7 +22,7 @@ import hashlib
 import json
 from asyncio import Lock
 from itertools import islice
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 from collections import defaultdict
 
 import aiohttp
@@ -95,6 +95,10 @@ class Configurator(Client):
 
         self.couchdb_db_clients = await self.couchdb_client.create(
             "clients", exists_ok=True
+        )
+
+        self.couchdb_db_config_backups = await self.couchdb_client.create(
+            "config_backup", exists_ok=True
         )
 
         # After that, we do the MetricQ connection stuff
@@ -170,11 +174,22 @@ class Configurator(Client):
         async with self._get_config_lock(token):
 
             config = await self.couchdb_db_config[token]
+
             if config.exists:
-                with open(
-                    f"config-backup/{token}-{datetime.now().timestamp()}", "w"
-                ) as backup_file:
-                    backup_file.write(json.dumps(config.data))
+                try:
+                    backup = await self.couchdb_db_config_backups.create(
+                        f"backup-{token}-{datetime.datetime.now().isoformat()}"
+                    )
+                    backup_data = dict(config.data)
+                    backup_data["x-metricq-id"] = token
+                    if "_rev" in backup_data:
+                        del backup_data["_rev"]
+                    backup.update(backup_data)
+                    await backup.save()
+                except Exception as e:
+                    logger.warn(
+                        f"Failed to save configuration backup for `{config.id}` in CouchDB: {e}"
+                    )
 
             for config_key in list(config.keys()):
                 if config_key not in new_config:
@@ -187,7 +202,7 @@ class Configurator(Client):
         return
 
     async def update_metric_database_config(
-        self, metric_database_configurations: [MetricDatabaseConfiguration]
+        self, metric_database_configurations: List[MetricDatabaseConfiguration]
     ):
 
         configurations_by_database = {}
@@ -527,6 +542,25 @@ class Configurator(Client):
             response_callback=callback,
             cleanup_on_response=False,
         )
+
+    async def fetch_config_backups(self, token: str) -> List[str]:
+        return [
+            backup.id
+            async for backup in self.couchdb_db_config_backups.view(
+                "index", "token"
+            ).docs(prefix=token)
+        ]
+
+    async def fetch_config_backup(self, token: str, backup_id: str) -> JsonDict:
+        assert backup_id.startswith(f"backup-{token}-")
+
+        backup = await self.couchdb_db_config_backups.get(backup_id)
+        backup_data = dict(backup.data)
+        del backup_data["_id"]
+        del backup_data["_rev"]
+        del backup_data["x-metricq-id"]
+
+        return backup_data
 
     async def fetch_topology(self) -> JsonDict:
         hosts = defaultdict(dict)

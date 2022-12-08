@@ -56,3 +56,37 @@ async def reconfigure_client(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
+
+
+@swagger_path("api_doc/backup_list_client.yaml")
+@routes.get("/api/client/{client_id}/backups")
+async def get_client_backup_list(request: Request):
+    client_id = request.match_info["client_id"]
+    configurator: Configurator = request.app["metricq_client"]
+
+    backup_list = await configurator.fetch_config_backups(token=client_id)
+
+    print(backup_list)
+
+    return Response(
+        text=json.dumps(backup_list),
+        content_type="application/json",
+    )
+
+
+@swagger_path("api_doc/backup_list_client.yaml")
+@routes.get("/api/client/{client_id}/backup/{backup_id}")
+async def get_client_backup(request: Request):
+    client_id = request.match_info["client_id"]
+    backup_id = request.match_info["backup_id"]
+
+    configurator: Configurator = request.app["metricq_client"]
+
+    backup = await configurator.fetch_config_backup(
+        token=client_id, backup_id=backup_id
+    )
+
+    return Response(
+        text=json.dumps(backup),
+        content_type="application/json",
+    )
