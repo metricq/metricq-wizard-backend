@@ -92,6 +92,13 @@ class Configurator(Client):
             "config_backup", exists_ok=True
         )
 
+        index = await self.couchdb_db_config_backups.design_doc("index", exists_ok=True)
+        await index.create_view(
+            view="token",
+            map_function='function (doc) {\n  emit(doc["x-metricq-id"], doc._id);\n}',
+            exists_ok=True,
+        )
+
         # After that, we do the MetricQ connection stuff
         await super().connect()
 
