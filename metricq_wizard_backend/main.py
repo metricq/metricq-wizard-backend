@@ -41,13 +41,9 @@ async def startup(app: web.Application):
     settings: Settings = app["settings"]
     client = Configurator(
         settings.token,
-        settings.amqp_server,
-        settings.couchdb_url,
-        settings.couchdb_user,
-        settings.couchdb_password,
         settings.rabbitmq_url,
-        settings.rabbitmq_user,
-        settings.rabbitmq_password,
+        settings.couchdb_url,
+        settings.rabbitmq_api_url,
     )
     app["metricq_client"] = client
     await client.connect()

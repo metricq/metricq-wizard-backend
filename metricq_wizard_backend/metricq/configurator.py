@@ -56,25 +56,16 @@ class Configurator(Client):
         token,
         management_url,
         couchdb_url,
-        couchdb_user,
-        couchdb_password,
-        rabbitmq_url,
-        rabbitmq_user,
-        rabbitmq_password,
+        rabbitmq_api_url,
     ):
         super().__init__(
             token,
             management_url,
         )
-        self.couchdb_client: CouchDB = CouchDB(
-            couchdb_url,
-            user=couchdb_user,
-            password=couchdb_password,
-        )
 
-        self.rabbitmq_url = rabbitmq_url
-        self.rabbitmq_user = rabbitmq_user
-        self.rabbitmq_password = rabbitmq_password
+        self.couchdb_client: CouchDB = CouchDB(couchdb_url)
+
+        self.rabbitmq_api_url = rabbitmq_api_url
 
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
@@ -109,9 +100,10 @@ class Configurator(Client):
         bindings = defaultdict(list)
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                self.rabbitmq_url + "/api/exchanges/data/metricq.data/bindings/source",
-                auth=aiohttp.BasicAuth(self.rabbitmq_user, self.rabbitmq_password),
+                self.rabbitmq_api_url
+                + "/api/exchanges/%2f/metricq.data/bindings/source"
             ) as resp:
+                print(await resp.json())
                 for binding in await resp.json():
                     metric = binding["routing_key"]
                     consumer = binding["destination"][:-5]
@@ -578,3 +570,14 @@ class Configurator(Client):
                 hosts["unknown"]["clients"].append(client_data.data)
 
         return list(hosts.values())
+
+    async def fetch_active_clients(self) -> List[JsonDict]:
+        clients = []
+        async for client in self.couchdb_db_clients.all_docs.docs():
+            data = dict(client.data)
+            data["id"] = data["_id"]
+            del data["_id"]
+            del data["_rev"]
+            clients.append(data)
+
+        return clients

@@ -45,6 +45,14 @@ async def get_client_list(request: Request):
     )
 
 
+@swagger_path("api_doc/get_active_clients_list.yaml")
+@routes.get("/api/clients/active")
+async def get_active_clients(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+
+    return json_response(data=await configurator.fetch_active_clients())
+
+
 @swagger_path("api_doc/reconfigure_client.yaml")
 @routes.post("/api/client/{client_id}/reconfigure")
 async def reconfigure_client(request: Request):
