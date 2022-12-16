@@ -40,7 +40,9 @@ async def get_client_list(request: Request):
     config_dict = await configurator.get_configs()
 
     return Response(
-        text=json.dumps([{"id": config_id} for config_id in config_dict]),
+        text=json.dumps(
+            [{"id": config_id, "hasConfiguration": True} for config_id in config_dict]
+        ),
         content_type="application/json",
     )
 
