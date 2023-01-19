@@ -20,13 +20,14 @@
 import datetime
 import hashlib
 import json
-from asyncio import Lock
+import urllib
+from asyncio import Lock, gather
 from itertools import islice
 from typing import Any, Dict, List, Optional, Sequence, Union
 from collections import defaultdict
 
 import aiohttp
-from aiocouch import CouchDB, database
+from aiocouch import CouchDB, Document, NotFoundError, database
 from metricq import Agent, Client
 from metricq.logging import get_logger
 from aiocache import SimpleMemoryCache, cached
@@ -57,6 +58,7 @@ class Configurator(Client):
         management_url,
         couchdb_url,
         rabbitmq_api_url,
+        rabbitmq_data_host,
     ):
         super().__init__(
             token,
@@ -66,6 +68,7 @@ class Configurator(Client):
         self.couchdb_client: CouchDB = CouchDB(couchdb_url)
 
         self.rabbitmq_api_url = rabbitmq_api_url
+        self.rabbitmq_data_host = rabbitmq_data_host
 
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
@@ -104,29 +107,90 @@ class Configurator(Client):
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
     async def fetch_bindings(self):
-        bindings = defaultdict(list)
+        metrics_by_consumer = defaultdict(list)
+        consumers_by_metric = defaultdict(list)
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 self.rabbitmq_api_url
-                + "/api/exchanges/%2f/metricq.data/bindings/source"
+                + f"/api/exchanges/{urllib.parse.quote_plus(self.rabbitmq_data_host)}/metricq.data/bindings/source"
             ) as resp:
-                print(await resp.json())
                 for binding in await resp.json():
                     metric = binding["routing_key"]
-                    consumer = binding["destination"][:-5]
-                    bindings[metric].append(consumer)
-        return bindings
+                    consumer = await self.guess_token_from_queue_name(
+                        binding["destination"]
+                    )
+                    consumers_by_metric[metric].append(consumer)
+                    metrics_by_consumer[consumer].append(metric)
+        return (
+            consumers_by_metric,
+            metrics_by_consumer,
+        )
+
+    @cached(ttl=60 * 60, cache=SimpleMemoryCache)
+    async def guess_token_from_queue_name(self, queue: str) -> str:
+        # first check if it's a data queue
+        assert queue.endswith("-data")
+        token = queue[:-5]
+
+        try:
+            # check if there is a configuration for a document called {token}
+            doc = Document(database=self.couchdb_db_config, id=token)
+            await doc._head()
+
+            return token
+        except NotFoundError:
+            # maybe the queue got a uuid attached to it
+            # so it would be {token}-{uuid}-data
+
+            # The following call is idempotent if there's no dash in token
+            token = token.rsplit("-", 1)[0]
+
+            try:
+                # check if there is a configuration for a document called {token}
+                doc = Document(database=self.couchdb_db_clients, id=token)
+                await doc._head()
+
+                return token
+            except NotFoundError:
+
+                # I'don't know what this is, but it's a queue ¯\_(ツ)_/¯
+                return token
+
+    @cached(ttl=5 * 60, cache=SimpleMemoryCache)
+    async def fetch_produced_metrics(self, token):
+        view = self.couchdb_db_metadata.view("index", "source")
+
+        return [metric async for metric in view.ids(prefix=token)]
+
+    async def fetch_consumed_metrics(self, token):
+        (_, metrics_by_consumer) = await self.fetch_bindings()
+
+        return metrics_by_consumer.get(token, [])
 
     async def fetch_consumers(self, metric: str):
-        bindings = await self.fetch_bindings()
+        (consumers_by_metric, _) = await self.fetch_bindings()
 
-        return bindings.get(metric, [])
+        return consumers_by_metric.get(metric, [])
 
     async def fetch_metadata(self, metric_ids):
         return {
             doc.id: doc.data
             async for doc in self.couchdb_db_metadata.docs(metric_ids, create=True)
         }
+
+    async def fetch_dependency_wheel(self):
+        connections = defaultdict(int)
+
+        for client in (await self.get_configs()).keys():
+            metrics = await self.fetch_produced_metrics(client)
+
+            for metric in metrics:
+                consumers = await self.fetch_consumers(metric)
+
+                for consumer in consumers:
+                    connections[(client, consumer)] += 1
+
+        return [[key[0], key[1], count] for key, count in connections.items()]
 
     async def read_config(self, token):
         return (await self.couchdb_db_config[token]).data
@@ -312,6 +376,11 @@ class Configurator(Client):
             return metrics
 
         return []
+
+    async def create_client(self, client_id):
+        async with self._get_config_lock(client_id):
+            config = await self.couchdb_db_config.create(client_id)
+            await config.save()
 
     async def reconfigure_client(self, client_id):
         async with self._get_config_lock(client_id):

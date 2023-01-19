@@ -55,6 +55,27 @@ async def get_active_clients(request: Request):
     return json_response(data=await configurator.fetch_active_clients())
 
 
+@swagger_path("api_doc/get_clients_dependency.yaml")
+@routes.get("/api/clients/dependencies")
+async def get_active_clients(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+
+    return json_response(data=await configurator.fetch_dependency_wheel())
+
+
+@swagger_path("api_doc/create_client.yaml")
+@routes.put("/api/client/{client_id}")
+async def create_client(request: Request):
+    client_id = request.match_info["client_id"]
+    configurator: Configurator = request.app["metricq_client"]
+    if not request.app["settings"].dry_run:
+        await configurator.create_client(client_id=client_id)
+
+    return Response(
+        text=json.dumps({"status": "success"}), content_type="application/json"
+    )
+
+
 @swagger_path("api_doc/reconfigure_client.yaml")
 @routes.post("/api/client/{client_id}/reconfigure")
 async def reconfigure_client(request: Request):
@@ -65,6 +86,30 @@ async def reconfigure_client(request: Request):
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
+    )
+
+
+@swagger_path("api_doc/client_metrics.yaml")
+@routes.get("/api/client/{client_id}/produced_metrics")
+async def client_produced_metrics(request: Request):
+    client_id = request.match_info["client_id"]
+    configurator: Configurator = request.app["metricq_client"]
+
+    return Response(
+        text=json.dumps(await configurator.fetch_produced_metrics(client_id)),
+        content_type="application/json",
+    )
+
+
+@swagger_path("api_doc/client_metrics.yaml")
+@routes.get("/api/client/{client_id}/consumed_metrics")
+async def client_consumed_metrics(request: Request):
+    client_id = request.match_info["client_id"]
+    configurator: Configurator = request.app["metricq_client"]
+
+    return Response(
+        text=json.dumps(await configurator.fetch_consumed_metrics(client_id)),
+        content_type="application/json",
     )
 
 

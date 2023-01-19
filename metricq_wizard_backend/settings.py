@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ) = "amqp://admin:admin@localhost/"
     couchdb_url: AnyHttpUrl = "http://localhost:5984"
     rabbitmq_api_url: AnyHttpUrl = "http://admin:admin@localhost:15672"
+    rabbitmq_data_host: str = "/"
     dry_run = False
 
     class Config:
