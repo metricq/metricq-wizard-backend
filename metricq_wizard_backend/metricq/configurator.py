@@ -130,7 +130,7 @@ class Configurator(Client):
     async def guess_token_from_queue_name(self, queue: str) -> str:
         # first check if it's a data queue
         assert queue.endswith("-data")
-        token = queue[:-5]
+        token = queue.removesuffix("-data")
 
         try:
             # check if there is a configuration for a document called {token}
