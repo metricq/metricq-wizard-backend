@@ -195,6 +195,13 @@ class Configurator(Client):
     async def read_config(self, token):
         return (await self.couchdb_db_config[token]).data
 
+    async def get_client_tokens(self) -> List[str]:
+        return [
+            id
+            async for id in self.couchdb_db_config.all_docs.akeys()
+            if not id.startswith("_")
+        ]
+
     async def get_configs(
         self, selector: Union[str, Sequence[str], None] = None
     ) -> dict:

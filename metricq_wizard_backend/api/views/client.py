@@ -37,12 +37,10 @@ routes = RouteTableDef()
 @routes.get("/api/clients")
 async def get_client_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
-    config_dict = await configurator.get_configs()
+    tokens = await configurator.get_client_tokens()
 
     return Response(
-        text=json.dumps(
-            [{"id": config_id, "hasConfiguration": True} for config_id in config_dict]
-        ),
+        text=json.dumps([{"id": token, "hasConfiguration": True} for token in tokens]),
         content_type="application/json",
     )
 
