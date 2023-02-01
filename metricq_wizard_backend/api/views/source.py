@@ -39,20 +39,16 @@ routes = RouteTableDef()
 @routes.get("/api/sources")
 async def get_source_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
-    config_dict = await configurator.get_configs()
+    configs = await configurator.get_configs("^source-.*")
     source_list = []
-    for config_id, config in config_dict.items():
-        if config_id.startswith("source-"):
-            try:
-                source_list.append(
-                    {
-                        "id": config_id,
-                        "configurable": "type" in config,
-                        "type": config.get("type"),
-                    }
-                )
-            except KeyError:
-                logger.error(f"Config of source {config_id} is incorrect! Missing key")
+    for token, config in configs.items():
+        source_list.append(
+            {
+                "id": token,
+                "configurable": "type" in config,
+                "type": config.get("type"),
+            }
+        )
 
     return Response(text=json.dumps(source_list), content_type="application/json")
 

@@ -98,8 +98,8 @@ def _get_interval_max_ms(interval_min_ms: int, interval_factor: int) -> int:
     n = int(math.log(ms_a_day / interval_min_ms, interval_factor))
     if n < 0:
         n = 0
-    if interval_min_ms * (interval_factor ** n) >= ms_a_day:
-        return interval_min_ms * (interval_factor ** n)
+    if interval_min_ms * (interval_factor**n) >= ms_a_day:
+        return interval_min_ms * (interval_factor**n)
     return interval_min_ms * (interval_factor ** (n + 1))
 
 
@@ -218,3 +218,13 @@ async def reconfigure_database(request: Request):
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
     )
+
+
+@routes.get("/api/metric/{metric_id}/consumers")
+async def get_metric_consumers(request: Request):
+    metric_id = request.match_info["metric_id"]
+    configurator: Configurator = request.app["metricq_client"]
+
+    consumers = await configurator.fetch_consumers(metric=metric_id)
+
+    return Response(text=json.dumps(consumers), content_type="application/json")

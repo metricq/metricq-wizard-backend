@@ -37,23 +37,18 @@ routes = RouteTableDef()
 @routes.get("/api/transformers")
 async def get_transformer_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
-    config_dict = await configurator.get_configs()
-    transformer_list = []
-    for config_id in config_dict.keys():
-        if config_id.startswith("transformer-"):
-            try:
-                transformer_list.append(
-                    {
-                        "id": config_id,
-                        "isCombinator": "combinator" in config_id.lower(),
-                    }
-                )
-            except KeyError:
-                logger.error(
-                    f"Config of transformer {config_id} is incorrect! Missing key"
-                )
+    tokens = await configurator.get_client_tokens()
+    transformers = []
+    for token in tokens:
+        if token.startswith("transformer-"):
+            transformers.append(
+                {
+                    "id": token,
+                    "isCombinator": "combinator" in token.lower(),
+                }
+            )
 
-    return Response(text=json.dumps(transformer_list), content_type="application/json")
+    return Response(text=json.dumps(transformers), content_type="application/json")
 
 
 @swagger_path("api_doc/transformer/get_combinator_metric_expression.yaml")

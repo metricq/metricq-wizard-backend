@@ -32,24 +32,18 @@ WORKDIR /home/metricq/wizard
 
 EXPOSE 8000
 
-ARG wait_for_couchdb_url=127.0.0.1:5984
-ENV wait_for_couchdb_url=$wait_for_couchdb_url
-
-ARG couchdb_url=http://localhost:5984
+ARG couchdb_url=http://admin:admin@localhost:5984
 ENV COUCHDB_URL=$couchdb_url
 
-ARG couchdb_user=admin
-ENV COUCHDB_USER=$couchdb_user
+ARG rabbitmq_url=amqp://admin:admin@localhost:5672
+ENV RABBITMQ_URL=$rabbitmq_url
 
-ARG couchdb_password=admin
-ENV COUCHDB_PASSORD=$couchdb_password
+ARG rabbitmq_api_url=http://admin:admin@localhost:15672/api
+ENV RABBITMQ_API_URL=$rabbitmq_api_url
 
-ARG wait_for_rabbitmq_url=127.0.0.1:5672
-ENV wait_for_rabbitmq_url=$wait_for_rabbitmq_url
-
-ARG amqp_server=amqp://localhost:5672
-ENV AMQP_SERVER=$amqp_server
+ARG rabbitmq_data_host=/
+ENV RABBITMQ_DATA_HOST=$rabbitmq_data_host
 
 VOLUME /home/metricq/wizard/config-backup/
 
-CMD /home/metricq/wait-for-it.sh $wait_for_couchdb_url -- /home/metricq/wait-for-it.sh $wait_for_rabbitmq_url -- /home/metricq/.local/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker metricq_wizard_backend.main:create_app
+CMD /home/metricq/.local/bin/gunicorn --bind=0.0.0.0:8000 --worker-class=aiohttp.GunicornWebWorker metricq_wizard_backend.main:create_app

@@ -228,5 +228,6 @@ dmypy.json
 
 ### dotenv ###
 .env
+venv
 
 # End of https://www.gitignore.io/api/macos,python,pycharm,dotenv
