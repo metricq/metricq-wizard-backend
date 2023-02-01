@@ -278,7 +278,7 @@ class Configurator(Client):
             config = await self.couchdb_db_config[token]
 
             if config.exists:
-                await self._save_backup(config)
+                await self._save_backup(config=config)
 
             for config_key in list(config.keys()):
                 if config_key not in new_config:

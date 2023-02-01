@@ -107,7 +107,7 @@ async def get_client_backup_list(request: Request):
     token: str = request.match_info["token"]
     configurator: Configurator = request.app["metricq_client"]
 
-    return json_response(data=await configurator.fetch_config_backups(token))
+    return json_response(data=await configurator.fetch_config_backups(token=token))
 
 
 @swagger_path("api_doc/backup_list_client.yaml")
