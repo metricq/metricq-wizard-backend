@@ -80,7 +80,8 @@ class Bindings:
                 urllib.parse.urljoin(
                     self.api_url,
                     f"/api/exchanges/{urllib.parse.quote_plus(self.data_host)}/metricq.data/bindings/source",
-                )
+                ),
+                raise_for_status=True,
             ) as resp:
                 for binding in await resp.json():
                     metric = binding["routing_key"]
