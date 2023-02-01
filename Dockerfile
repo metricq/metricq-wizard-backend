@@ -41,6 +41,8 @@ ENV RABBITMQ_URL=$rabbitmq_url
 ARG rabbitmq_api_url=http://admin:admin@localhost:15672/api
 ENV RABBITMQ_API_URL=$rabbitmq_api_url
 
+ARG rabbitmq_data_host=/
+ENV RABBITMQ_DATA_HOST=$rabbitmq_data_host
 
 VOLUME /home/metricq/wizard/config-backup/
 
