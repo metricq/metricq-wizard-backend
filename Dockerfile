@@ -15,7 +15,10 @@ USER metricq
 COPY --chown=metricq:metricq . /home/metricq/wizard
 
 WORKDIR /home/metricq/wizard
-RUN pip install --user . gunicorn
+RUN pip install --user . gunicorn \
+    ./metricq-wizard-plugin-source-bacnet \
+    ./metricq-wizard-plugin-source-http \
+    ./metricq-wizard-plugin-source-lmgd 
 
 WORKDIR /home/metricq
 RUN wget -O wait-for-it.sh https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh && chmod +x wait-for-it.sh
