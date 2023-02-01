@@ -18,6 +18,11 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 
+"""
+The following code is used in the MetricQ-Explorer as backend, but it 
+has been created in the learning process. Use with care. Don't read,
+unless you intend to rewrite it.
+"""
 
 from collections import defaultdict
 

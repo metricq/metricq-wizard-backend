@@ -19,34 +19,20 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
 
-import metricq
 from aiohttp.web_request import Request
-from aiohttp.web_response import Response, json_response
+from aiohttp.web_response import json_response
 from aiohttp.web_routedef import RouteTableDef
 from aiohttp_swagger import swagger_path
 
 from metricq_wizard_backend.metricq import Configurator
 
-logger = metricq.get_logger()
-logger.setLevel("DEBUG")
-
 routes = RouteTableDef()
 
 
-@swagger_path("api_doc/discover_topology.yaml")
-@routes.post("/api/topology/discover")
-async def update_topology(request: Request):
+@swagger_path("api_doc/discover.yaml")
+@routes.post("/api/discover")
+async def post_client_discover(request: Request):
     configurator: Configurator = request.app["metricq_client"]
     await configurator.discover()
 
     return json_response(data={"ok": "Processing update asynchronously."}, status=202)
-
-
-@swagger_path("api_doc/discover.yaml")
-@routes.get("/api/topology")
-async def get_topology(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
-
-    topology = await configurator.fetch_topology()
-
-    return json_response(data=topology)

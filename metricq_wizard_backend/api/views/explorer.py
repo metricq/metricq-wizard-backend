@@ -28,7 +28,6 @@ from metricq_wizard_backend.metricq import Configurator
 from metricq_wizard_backend.metricq.network import Network
 
 logger = metricq.get_logger()
-logger.setLevel("DEBUG")
 
 routes = RouteTableDef()
 

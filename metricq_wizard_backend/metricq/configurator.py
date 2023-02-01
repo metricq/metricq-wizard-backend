@@ -21,22 +21,27 @@ import datetime
 import hashlib
 import json
 import urllib
+import functools
 from asyncio import Lock, gather
+from collections import defaultdict
 from itertools import islice
 from typing import Any, Dict, List, Optional, Sequence, Union
-from collections import defaultdict
 
 import aiohttp
-from aiocouch import CouchDB, Document, NotFoundError, database
+from aiocache import SimpleMemoryCache, cached
+from aiocouch import ConflictError, CouchDB, Document, database
 from metricq import Agent, Client
 from metricq.logging import get_logger
-from aiocache import SimpleMemoryCache, cached
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
-from metricq_wizard_backend.metricq.session_manager import UserSessionManager
-from metricq_wizard_backend.metricq.session_manager import UserSession
+from metricq_wizard_backend.metricq.session_manager import (
+    UserSession,
+    UserSessionManager,
+)
 from metricq_wizard_backend.metricq.source_plugin import SourcePlugin
 from metricq_wizard_backend.version import version as __version__  # noqa: F401
+
+from . import rabbitmq
 
 logger = get_logger()
 
@@ -49,6 +54,21 @@ JsonDict = dict[str, Any]
 # logger.handlers[0].formatter = logging.Formatter(
 #     fmt="%(asctime)s [%(levelname)-8s] [%(name)-20s] %(message)s"
 # )
+
+
+def measure(func):
+    import time
+
+    @functools.wraps(func)
+    async def wrapped(*args):
+        start_time = time.time_ns()
+        result = await func(*args)
+        end_time = time.time_ns()
+        duration_ns = end_time - start_time
+        logger.warn(f"{func} took {duration_ns / 1e9}s")
+        return result
+
+    return wrapped
 
 
 class Configurator(Client):
@@ -106,55 +126,13 @@ class Configurator(Client):
         await super().connect()
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
-    async def fetch_bindings(self):
-        metrics_by_consumer = defaultdict(list)
-        consumers_by_metric = defaultdict(list)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                self.rabbitmq_api_url
-                + f"/api/exchanges/{urllib.parse.quote_plus(self.rabbitmq_data_host)}/metricq.data/bindings/source"
-            ) as resp:
-                for binding in await resp.json():
-                    metric = binding["routing_key"]
-                    consumer = await self.guess_token_from_queue_name(
-                        binding["destination"]
-                    )
-                    consumers_by_metric[metric].append(consumer)
-                    metrics_by_consumer[consumer].append(metric)
-        return (
-            consumers_by_metric,
-            metrics_by_consumer,
+    async def rabbitmq_bindings(self) -> rabbitmq.Bindings:
+        return await rabbitmq.fetch_bindings(
+            api_url=self.rabbitmq_api_url,
+            data_host=self.rabbitmq_data_host,
+            configs=self.couchdb_db_config,
+            clients=self.couchdb_db_clients,
         )
-
-    @cached(ttl=60 * 60, cache=SimpleMemoryCache)
-    async def guess_token_from_queue_name(self, queue: str) -> str:
-        # first check if it's a data queue
-        assert queue.endswith("-data")
-        token = queue.removesuffix("-data")
-
-        try:
-            # check if there is a configuration for a document called {token}
-            doc = Document(database=self.couchdb_db_config, id=token)
-            await doc._head()
-
-            return token
-        except NotFoundError:
-            # maybe the queue got a uuid attached to it
-            # so it would be {token}-{uuid}-data
-
-            # The following call is idempotent if there's no dash in token
-            token = token.rsplit("-", 1)[0]
-
-            try:
-                # check if there is a configuration for a document called {token}
-                doc = Document(database=self.couchdb_db_clients, id=token)
-                await doc._head()
-
-                return token
-            except NotFoundError:
-
-                # I'don't know what this is, but it's a queue ¯\_(ツ)_/¯
-                return token
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
     async def fetch_produced_metrics(self, token):
@@ -163,14 +141,14 @@ class Configurator(Client):
         return [metric async for metric in view.ids(prefix=token)]
 
     async def fetch_consumed_metrics(self, token):
-        (_, metrics_by_consumer) = await self.fetch_bindings()
+        bindings = await self.rabbitmq_bindings()
 
-        return metrics_by_consumer.get(token, [])
+        return bindings.metrics_by_consumer.get(token, [])
 
     async def fetch_consumers(self, metric: str):
-        (consumers_by_metric, _) = await self.fetch_bindings()
+        bindings = await self.rabbitmq_bindings()
 
-        return consumers_by_metric.get(metric, [])
+        return bindings.consumers_by_metric.get(metric, [])
 
     async def fetch_metadata(self, metric_ids):
         return {
@@ -178,19 +156,53 @@ class Configurator(Client):
             async for doc in self.couchdb_db_metadata.docs(metric_ids, create=True)
         }
 
-    async def fetch_dependency_wheel(self):
-        connections = defaultdict(int)
+    @measure
+    async def fetch_dependency_wheel(self) -> list[list[Any]]:
+        """
+        This method produces the data used to draw the dependency
+        wheel graph displayed in the Client Overview.
 
-        for client in (await self.get_configs()).keys():
-            metrics = await self.fetch_produced_metrics(client)
+        Think of the result as a dict with the combination of the
+        source and sink token as key and the number of consumed
+        metrics of the sink produced by the source as the value.
 
+        But represented as a list containing a list containing
+        the source token, sink token and the value.
+        """
+        # for fast access, we internally work with an actual dict
+        # with the tuple (source, sink) as key
+        connections: dict[tuple[str, str], int] = defaultdict(int)
+
+        # grab all the "sources" from the database. We only use the
+        # config database, because all "sources" have to have configs.
+        clients = [client async for client in self.couchdb_db_config.akeys()]
+
+        # now grab all metrics that all the clients produce. This is likely
+        # the expensive part, as we have to poke the couchdb quite a bit
+        metrics_by_client = zip(
+            clients,
+            await gather(*[self.fetch_produced_metrics(client) for client in clients]),
+        )
+
+        # iterate over every (client, metric) combination
+        for client, metrics in metrics_by_client:
             for metric in metrics:
-                consumers = await self.fetch_consumers(metric)
+                # fetch_consumers are likely available in the aiocache and if not,
+                # then the underlying call is cached, so using gather is mostly
+                # pointless but would make this function even more complicated.
+                for consumer in await self.fetch_consumers(metric):
 
-                for consumer in consumers:
+                    # and update our dict for each metric
+                    # in the end, connections will contains the number of
+                    # consumed metrics by the `consumer` that were produced by
+                    # the `client`
                     connections[(client, consumer)] += 1
 
-        return [[key[0], key[1], count] for key, count in connections.items()]
+        # and finally, dumb down the result, so we can easily put that into JSON
+        return [
+            [client, consumer, count]
+            for (client, consumer), count in connections.items()
+        ]
 
     async def read_config(self, token):
         return (await self.couchdb_db_config[token]).data
@@ -237,6 +249,26 @@ class Configurator(Client):
 
         return configs
 
+    async def _save_backup(self, *, config: Document) -> None:
+        token = config.id
+        try:
+            backup = await self.couchdb_db_config_backups.create(
+                f"backup-{token}-{datetime.datetime.now().isoformat()}"
+            )
+
+            backup_data = dict(config.data)
+            backup_data["x-metricq-id"] = token
+            if "_rev" in backup_data:
+                del backup_data["_rev"]
+            backup.update(backup_data)
+
+            await backup.save()
+
+        except Exception as e:
+            logger.warn(
+                f"Failed to save configuration backup for `{config.id}` in CouchDB: {e}"
+            )
+
     async def set_config(self, token: str, new_config: dict):
         arguments = {"token": token, "config": new_config}
         logger.debug(arguments)
@@ -246,20 +278,7 @@ class Configurator(Client):
             config = await self.couchdb_db_config[token]
 
             if config.exists:
-                try:
-                    backup = await self.couchdb_db_config_backups.create(
-                        f"backup-{token}-{datetime.datetime.now().isoformat()}"
-                    )
-                    backup_data = dict(config.data)
-                    backup_data["x-metricq-id"] = token
-                    if "_rev" in backup_data:
-                        del backup_data["_rev"]
-                    backup.update(backup_data)
-                    await backup.save()
-                except Exception as e:
-                    logger.warn(
-                        f"Failed to save configuration backup for `{config.id}` in CouchDB: {e}"
-                    )
+                await self._save_backup(config)
 
             for config_key in list(config.keys()):
                 if config_key not in new_config:
@@ -384,18 +403,18 @@ class Configurator(Client):
 
         return []
 
-    async def create_client(self, client_id):
-        async with self._get_config_lock(client_id):
-            config = await self.couchdb_db_config.create(client_id)
+    async def create_client(self, token):
+        async with self._get_config_lock(token):
+            config = await self.couchdb_db_config.create(token)
             await config.save()
 
-    async def reconfigure_client(self, client_id):
-        async with self._get_config_lock(client_id):
-            config = await self.couchdb_db_config[client_id]
+    async def reconfigure_client(self, token):
+        async with self._get_config_lock(token):
+            config = await self.couchdb_db_config[token]
             await super(Client, self).rpc(
                 function="config",
                 exchange=self._management_channel.default_exchange,
-                routing_key=f"{client_id}-rpc",
+                routing_key=f"{token}-rpc",
                 response_callback=self._on_client_configure_response,
                 **config,
             )
@@ -584,29 +603,41 @@ class Configurator(Client):
 
         return False
 
-    async def get_host(self, client: str) -> str:
-        try:
-            response = await Agent.rpc(
-                self,
-                function="discover",
-                routing_key=f"{client}-rpc",
-                exchange=self._management_channel.default_exchange,
-                timeout=10,
-            )
-            return response
-        except TimeoutError as e:
-            raise RuntimeError(
-                f"Failed to get hostname for '{client}'. RPC timed out."
-            ) from e
-
     async def discover(self) -> None:
         async def callback(from_token: str, **response):
             client = await self.couchdb_db_clients.create(from_token, exists_ok=True)
+
+            # sanitize against evil clients
+            response.pop("_id", None)
+            response.pop("_rev", None)
+            response.pop("_deleted", None)
+
             client.update(response)
             client["discoverTime"] = datetime.datetime.now(
                 tz=datetime.timezone.utc
             ).isoformat()
-            await client.save()
+
+            try:
+                await client.save()
+            except ConflictError:
+                # if there's a conflict, this just means we received another discover
+                # response since we loaded the document from the CouchDB. Likely,
+                # another user also triggered the cluster discovery scan. Assuming
+                # everyone behaves, it doesn't really matter which one we save.
+                # So let's just try again, it should work. It might also be a
+                # dumb-and-dumber situation, where two (or more) clients use the
+                # exact same token, hence, we log it.
+                # Technically speaking, a malicious client could mess this up with
+                # forging the from_token, however, if the timing is a bit off, I
+                # wouldn't be able to notice that anyways and a malicious client
+                # could mess up so much more. It's fine... I guess.
+
+                logger.warn(
+                    "Failed to save discover response for client {} due to a document conflict. Retrying.",
+                    from_token,
+                )
+
+                callback(from_token, **response)
 
         await Agent.rpc(
             self,
@@ -618,7 +649,7 @@ class Configurator(Client):
             cleanup_on_response=False,
         )
 
-    async def fetch_config_backups(self, token: str) -> List[str]:
+    async def fetch_config_backups(self, *, token: str) -> list[str]:
         return [
             backup.id
             async for backup in self.couchdb_db_config_backups.view(
@@ -626,10 +657,11 @@ class Configurator(Client):
             ).docs(prefix=token)
         ]
 
-    async def fetch_config_backup(self, token: str, backup_id: str) -> JsonDict:
+    async def fetch_config_backup(self, *, token: str, backup_id: str) -> JsonDict:
         assert backup_id.startswith(f"backup-{token}-")
 
         backup = await self.couchdb_db_config_backups.get(backup_id)
+
         backup_data = dict(backup.data)
         del backup_data["_id"]
         del backup_data["_rev"]
@@ -637,30 +669,15 @@ class Configurator(Client):
 
         return backup_data
 
-    async def fetch_topology(self) -> JsonDict:
-        hosts = defaultdict(dict)
-
-        async for client_data in self.couchdb_db_clients.all_docs.docs():
-            try:
-                hosts[client_data["hostname"]].setdefault(
-                    "hostname", client_data["hostname"]
-                )
-                hosts[client_data["hostname"]].setdefault("clients", [])
-                hosts[client_data["hostname"]]["clients"].append(client_data.data)
-            except KeyError:
-                hosts["unknown"].setdefault("hostname", client_data["hostname"])
-                hosts["unknown"].setdefault("clients", [])
-                hosts["unknown"]["clients"].append(client_data.data)
-
-        return list(hosts.values())
-
-    async def fetch_active_clients(self) -> List[JsonDict]:
-        clients = []
-        async for client in self.couchdb_db_clients.all_docs.docs():
+    async def fetch_active_clients(self) -> list[JsonDict]:
+        def _transform_client_document(*, client: Document) -> JsonDict:
             data = dict(client.data)
             data["id"] = data["_id"]
             del data["_id"]
             del data["_rev"]
-            clients.append(data)
+            return data
 
-        return clients
+        return [
+            _transform_client_document(client=client)
+            async for client in self.couchdb_db_clients.all_docs.docs()
+        ]
