@@ -191,7 +191,6 @@ class Configurator(Client):
                 # then the underlying call is cached, so using gather is mostly
                 # pointless but would make this function even more complicated.
                 for consumer in await self.fetch_consumers(metric):
-
                     # and update our dict for each metric
                     # in the end, connections will contains the number of
                     # consumed metrics by the `consumer` that were produced by
@@ -274,7 +273,6 @@ class Configurator(Client):
         logger.debug(arguments)
 
         async with self._get_config_lock(token):
-
             config = await self.couchdb_db_config[token]
 
             if config.exists:
@@ -293,7 +291,6 @@ class Configurator(Client):
     async def update_metric_database_config(
         self, metric_database_configurations: List[MetricDatabaseConfiguration]
     ):
-
         configurations_by_database = {}
         for config in metric_database_configurations:
             config_list = configurations_by_database.get(config.database_id, [])
@@ -403,12 +400,12 @@ class Configurator(Client):
 
         return []
 
-    async def create_client(self, token):
+    async def create_client(self, *, token):
         async with self._get_config_lock(token):
             config = await self.couchdb_db_config.create(token)
             await config.save()
 
-    async def reconfigure_client(self, token):
+    async def reconfigure_client(self, *, token):
         async with self._get_config_lock(token):
             config = await self.couchdb_db_config[token]
             await super(Client, self).rpc(

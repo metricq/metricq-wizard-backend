@@ -213,7 +213,7 @@ async def reconfigure_database(request: Request):
     database_id = request.match_info["database_id"]
     configurator: Configurator = request.app["metricq_client"]
     if not request.app["settings"].dry_run:
-        await configurator.reconfigure_client(client_id=database_id)
+        await configurator.reconfigure_client(token=database_id)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
