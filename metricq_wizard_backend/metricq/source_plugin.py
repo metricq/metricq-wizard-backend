@@ -31,7 +31,7 @@ class AddMetricItem(pydantic.BaseModel):
     custom_columns_values: Dict
 
     class Config:
-        allow_population_by_alias = True
+        allow_population_by_field_name = True
 
         @classmethod
         def alias_generator(cls, string: str) -> str:
@@ -44,7 +44,7 @@ class AvailableMetricItem(pydantic.BaseModel):
     custom_columns: Dict
 
     class Config:
-        allow_population_by_alias = True
+        allow_population_by_field_name = True
 
         @classmethod
         def alias_generator(cls, string: str) -> str:
