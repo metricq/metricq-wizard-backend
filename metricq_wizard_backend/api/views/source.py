@@ -336,7 +336,7 @@ async def reconfigure_source(request: Request):
     source_id = request.match_info["source_id"]
     configurator: Configurator = request.app["metricq_client"]
     if not request.app["settings"].dry_run:
-        await configurator.reconfigure_client(client_id=source_id)
+        await configurator.reconfigure_client(token=source_id)
 
     return Response(
         text=json.dumps({"status": "success"}), content_type="application/json"
@@ -356,7 +356,7 @@ async def save_config_and_reconfigure_source(request: Request):
         source_id=source_id, session_key=session_key, unload_plugin=True
     )
     if not request.app["settings"].dry_run:
-        await configurator.reconfigure_client(client_id=source_id)
+        await configurator.reconfigure_client(token=source_id)
 
     return Response(
         text=json.dumps({"status": "success", "metrics": metrics}),
