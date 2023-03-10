@@ -504,7 +504,7 @@ class Configurator(Client):
             request_params = {}
             if infix is None:
                 request_prefix = prefix
-                if historic is not None:
+                if historic:
                     endpoint = self.couchdb_db_metadata.view("index", "historic")
                 elif source is not None:
                     endpoint = self.couchdb_db_metadata.view("index", "source")
@@ -518,12 +518,11 @@ class Configurator(Client):
                 # to get enough results. We assume for no more than 6 infix segments on average
                 if limit is not None:
                     request_limit = 6 * limit
-                if historic is not None:
+                if historic:
                     endpoint = self.couchdb_db_metadata.view("components", "historic")
                 else:
-                    raise NotImplementedError(
-                        "non-historic infix lookup not yet supported"
-                    )
+                    endpoint = self.couchdb_db_metadata.view("components", "all")
+
             if format == "array":
                 metrics = [
                     key
