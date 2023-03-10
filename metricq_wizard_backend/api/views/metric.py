@@ -39,10 +39,11 @@ async def get_metric_list(request: Request):
     client: Configurator = request.app["metricq_client"]
     infix = request.query.get("infix", None)
     limit = request.query.get("limit", None)
+    historic = request.query.get("historic", False)
     if limit:
         limit = int(limit)
     metric_dict = await client.get_metrics(
-        infix=infix, format="object", historic=True, limit=limit
+        infix=infix, format="object", historic=historic, limit=limit
     )
     metric_list = []
     for metric_id in metric_dict:
