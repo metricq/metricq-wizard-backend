@@ -1,4 +1,4 @@
-FROM metricq/metricq-python:v4.2 AS builder
+FROM ghcr.io/metricq/metricq-python:v4.2 AS builder
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 USER root
@@ -23,7 +23,7 @@ RUN pip install --user . gunicorn \
 WORKDIR /home/metricq
 RUN wget -O wait-for-it.sh https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh && chmod +x wait-for-it.sh
 
-FROM metricq/metricq-python:v4.2
+FROM ghcr.io/metricq/metricq-python:v4.2
 LABEL maintainer="franz.hoepfner@tu-dresden.de"
 
 RUN mkdir -p /home/metricq/wizard/config-backup
