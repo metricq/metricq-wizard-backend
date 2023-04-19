@@ -19,10 +19,11 @@
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import json
 import math
+from typing import Any
 
 import metricq
 from aiohttp.web_request import Request
-from aiohttp.web_response import Response
+from aiohttp.web_response import Response, json_response
 from aiohttp.web_routedef import RouteTableDef
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfigurations
@@ -102,6 +103,48 @@ def _get_interval_max_ms(interval_min_ms: int, interval_factor: int) -> int:
     if interval_min_ms * (interval_factor**n) >= ms_a_day:
         return interval_min_ms * (interval_factor**n)
     return interval_min_ms * (interval_factor ** (n + 1))
+
+
+@routes.post("/api/metrics/delete_metadata")
+async def post_metrics_delete_metadata(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or not "metrics" in data
+        or not isinstance(data["metrics"], list)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: list[metricq.Metric] = data["metrics"]
+
+    if any([not isinstance(id, str) for id in metrics]) or len(metrics) == 0:
+        return json_response(
+            {"status": "error", "message": "Invalid metric list in request"}, status=400
+        )
+
+    deleted_metrics = await client.delete_metadata(metrics)
+
+    if set(deleted_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "deleted": deleted_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't delete all metrics.",
+                "deleted": deleted_metrics,
+                "failed": list(set(metrics) - set(deleted_metrics)),
+            },
+            status=400,
+        )
 
 
 @routes.post("/api/metrics/database/defaults")

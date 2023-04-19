@@ -18,16 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 import datetime
+import functools
 import hashlib
 import json
-import urllib
-import functools
 from asyncio import Lock, gather
 from collections import defaultdict
 from itertools import islice
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-import aiohttp
 from aiocache import SimpleMemoryCache, cached
 from aiocouch import ConflictError, CouchDB, Document, database
 from metricq import Agent, Client
@@ -677,3 +675,38 @@ class Configurator(Client):
             _transform_client_document(client=client)
             async for client in self.couchdb_db_clients.all_docs.docs()
         ]
+
+    async def delete_metadata(self, metrics: list[str]) -> list[str]:
+        deleted_ids = []
+        # We don't want to raise an error if the metric doesn't exist, so we
+        # use the `create` parameter.
+        async for doc in self.couchdb_db_metadata.docs(metrics, create=True):
+            if doc.get("historic", False):
+                # we don't want to delete historic metrics
+                # if we hit one, we skip it. This is also checked on
+                # the front-end, but we are thorough here.
+                continue
+
+            if not doc.exists:
+                # if the document doesn't exist, we skip it.
+                # No actual document will be created on the server,
+                # as save() was never called.
+                continue
+
+            try:
+                # we need a copy of the id, because the doc will be invalid
+                # after we call delete
+                id = doc.id
+
+                await doc.delete()
+
+                # delete did work, so we can add id to the list
+                deleted_ids.append(id)
+            except ConflictError:
+                # if the delete didn't work, we simply skip the error.
+                # On a logical side, this error means that the metric was declared
+                # while we try to delete it, or someone else did hit delete as well.
+                # let the frontend deal with it.
+                pass
+
+        return deleted_ids
