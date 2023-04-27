@@ -299,6 +299,9 @@ class Configurator(Client):
             async with self._get_config_lock(database_id):
                 config = await self.couchdb_db_config[database_id]
 
+                if config.exists:
+                    await self._save_backup(config=config)
+
                 if config:
                     for metric_database_configuration in configurations_by_database[
                         database_id
@@ -567,6 +570,9 @@ class Configurator(Client):
         async with self._get_config_lock(transformer_id):
             config = await self.couchdb_db_config[transformer_id]
 
+            if config.exists:
+                await self._save_backup(config=config)
+
             if "metrics" not in config:
                 config["metrics"] = {}
 
@@ -582,6 +588,9 @@ class Configurator(Client):
     ) -> bool:
         async with self._get_config_lock(transformer_id):
             config = await self.couchdb_db_config[transformer_id]
+
+            if config.exists:
+                await self._save_backup(config=config)
 
             if "metrics" not in config:
                 config["metrics"] = {}
