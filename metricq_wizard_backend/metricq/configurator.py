@@ -23,6 +23,7 @@ import hashlib
 import json
 from asyncio import Lock, gather
 from collections import defaultdict
+from contextlib import suppress
 from itertools import islice
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -405,6 +406,19 @@ class Configurator(Client):
         async with self._get_config_lock(token):
             config = await self.couchdb_db_config.create(token)
             await config.save()
+
+    async def delete_client(self, *, token):
+        async with self._get_config_lock(token):
+            config = await self.couchdb_db_config.create(token, exists_ok=True)
+
+            if config.exists:
+                await self._save_backup(config=config)
+                await config.delete()
+
+            client = await self.couchdb_db_clients.create(token, exists_ok=True)
+
+            if client.exists:
+                await client.delete()
 
     async def reconfigure_client(self, *, token):
         async with self._get_config_lock(token):
