@@ -51,7 +51,13 @@ class Bindings:
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
     async def _guess_token_from_queue_name(self, queue: str) -> str:
         # first check if it's a data queue
-        assert queue.endswith("-data")
+        # somehow vtti managed to add a data queue without the
+        # postfix, so I make vtti proud by replacing the assert with
+        # an if statement.
+        if not queue.endswith("-data"):
+            # whatever this queue is, but I blame vtti for it.
+            return queue
+
         token = queue.removesuffix("-data")
 
         # assume the queue name is in the format of {token}-data
