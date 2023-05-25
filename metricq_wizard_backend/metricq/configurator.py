@@ -23,7 +23,6 @@ import hashlib
 import json
 from asyncio import Lock, gather
 from collections import defaultdict
-from contextlib import suppress
 from itertools import islice
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -407,18 +406,26 @@ class Configurator(Client):
             config = await self.couchdb_db_config.create(token)
             await config.save()
 
-    async def delete_client(self, *, token):
+    async def delete_client(self, *, token: str) -> bool:
         async with self._get_config_lock(token):
+            # While `existed` seems to be equal to `client.exists or config.exists`
+            # At return time, both do not exist anymore. Hence we keep it.
+            existed = False
+
             config = await self.couchdb_db_config.create(token, exists_ok=True)
 
             if config.exists:
+                existed = True
                 await self._save_backup(config=config)
                 await config.delete()
 
             client = await self.couchdb_db_clients.create(token, exists_ok=True)
 
             if client.exists:
+                existed = True
                 await client.delete()
+
+            return existed
 
     async def reconfigure_client(self, *, token):
         async with self._get_config_lock(token):

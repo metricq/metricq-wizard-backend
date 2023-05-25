@@ -77,7 +77,14 @@ async def delete_client(request: Request):
     token: str = request.match_info["token"]
     configurator: Configurator = request.app["metricq_client"]
     if not request.app["settings"].dry_run:
-        await configurator.delete_client(token=token)
+        if not await configurator.delete_client(token=token):
+            return json_response(
+                data={
+                    "status": "error",
+                    "message": f"client with token '{token}' does not exist.",
+                },
+                status=404,
+            )
 
     return json_response(data={"status": "success"})
 
