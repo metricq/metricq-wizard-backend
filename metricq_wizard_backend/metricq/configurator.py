@@ -17,10 +17,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import asyncio
 import datetime
 import functools
 import hashlib
 import json
+import uuid
 from asyncio import Lock, gather
 from collections import defaultdict
 from itertools import islice
@@ -28,6 +30,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 from aiocache import SimpleMemoryCache, cached
 from aiocouch import ConflictError, CouchDB, Document, database
+import metricq
 from metricq import Agent, Client
 from metricq.logging import get_logger
 
@@ -91,6 +94,7 @@ class Configurator(Client):
         self.couchdb_db_config: database.Database = None
         self.couchdb_db_metadata: database.Database = None
         self.couchdb_db_clients: database.Database = None
+        self.couchdb_db_issues: database.Database = None
 
         self.user_session_manager = UserSessionManager()
 
@@ -118,6 +122,10 @@ class Configurator(Client):
             view="token",
             map_function='function (doc) {\n  emit(doc["x-metricq-id"], doc._id);\n}',
             exists_ok=True,
+        )
+
+        self.couchdb_db_issues = await self.couchdb_client.create(
+            "issues", exists_ok=True
         )
 
         # After that, we do the MetricQ connection stuff
@@ -740,3 +748,178 @@ class Configurator(Client):
                 pass
 
         return deleted_ids
+
+    async def scan_cluster(self) -> None:
+        # TODO find a better way to not create duplicate reports
+        await self.couchdb_db_issues.delete()
+        self.couchdb_db_issues = await self.couchdb_client.create(
+            "issues", exists_ok=True
+        )
+        async with metricq.HistoryClient(
+            self.token, self._management_url, add_uuid=True
+        ) as client:
+            metrics = await client.get_metrics(prefix="", limit=999999, metadata=True)
+
+            # await self.check_metrics_for_infinite(metrics)
+            await self.check_metrics_for_dead(client, metrics)
+            # TODO add check for queue bindings
+
+    async def create_issue_report(
+        self, date: str = None, severity: str = None, **kwargs: Any
+    ):
+        if severity is None:
+            kwargs["severity"] = "warning"
+        if date is None:
+            kwargs["date"] = str(metricq.Timestamp.now().datetime.astimezone())
+        report = await self.couchdb_db_issues.create(
+            id=str(uuid.uuid4()),
+            data=kwargs,
+        )
+        await report.save()
+
+    async def check_metrics_for_dead(
+        self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
+    ) -> None:
+        logger.info(f"Checking {len(metrics)} metrics for dead metrics.")
+
+        dead_metrics: list[tuple[metricq.Timedelta, metricq.Timestamp, str]] = []
+        no_value_metrics: set[str] = set()
+        timeout_metrics: set[str] = set()
+        error_metrics: set[str] = set()
+
+        async def check_metric(metric: str, allowed_age: metricq.Timedelta) -> None:
+            try:
+                result = await client.history_last_value(metric, timeout=60)
+                if result is None:
+                    no_value_metrics.add(metric)
+                    await self.create_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="no_value",
+                        source=metrics[metric]["source"],
+                    )
+                    return
+                age = metricq.Timestamp.now() - result.timestamp
+                if age.s < 0:
+                    logger.error("Negative age for {}", metric)
+                elif age > allowed_age:
+                    dead_metrics.append((age, result.timestamp, metric))
+
+                    await self.create_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="dead",
+                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        source=metrics[metric]["source"],
+                    )
+            except asyncio.TimeoutError:
+                logger.debug("TimeoutError for {}", metric)
+                timeout_metrics.add(metric)
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="timeout",
+                    source=metrics[metric]["source"],
+                )
+            except metricq.exceptions.HistoryError as e:
+                logger.debug("HistoryError for {}: {}", metric, e)
+                error_metrics.add(metric)
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="errored",
+                    error=str(e),
+                    source=metrics[metric]["source"],
+                )
+
+        def compute_allowed_age(metadata: JsonDict) -> metricq.Timedelta:
+            tolerance = metricq.Timedelta.from_string("1s")
+            try:
+                rate = metadata["rate"]
+                if not isinstance(rate, (int, float)):
+                    logger.error(
+                        "Invalid rate: {} ({}) [{}]", rate, type(rate), metadata
+                    )
+                else:
+                    tolerance += metricq.Timedelta.from_s(1 / rate)
+            except KeyError:
+                # Fall back to compute tolerance from interval
+                try:
+                    interval = metadata["interval"]
+                    if isinstance(interval, str):
+                        tolerance += metricq.Timedelta.from_string(interval)
+                    elif isinstance(interval, (int, float)):
+                        tolerance += metricq.Timedelta.from_s(interval)
+                    else:
+                        logger.error(
+                            "Invalid interval: {} ({}) [{}]",
+                            interval,
+                            type(interval),
+                            metadata,
+                        )
+                except KeyError:
+                    pass
+            return tolerance
+
+        requests = [
+            check_metric(metric, compute_allowed_age(metadata))
+            for metric, metadata in metrics.items()
+        ]
+
+        for request in asyncio.as_completed(requests):
+            await request
+
+        if dead_metrics:
+            logger.error("Found {} dead metrics:", len(dead_metrics))
+            # for age, timestamp, metric in sorted(dead_metrics):
+            #     pass
+
+        if no_value_metrics:
+            logger.error("Found {} metrics without a value:", len(no_value_metrics))
+
+        if timeout_metrics:
+            logger.error("Found {} metrics with a timeout:", len(timeout_metrics))
+
+        if error_metrics:
+            logger.error("Found {} metrics with an error:", len(error_metrics))
+
+    # async def check_metrics_for_infinite(
+    #     client: metricq.HistoryClient, metrics: dict[str, JsonDict]
+    # ) -> None:
+    #     logger.info(f"Checking {len(metrics)} metrics for non-finite numbers.")
+
+    #     start_time = metricq.Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
+    #     end_time = metricq.Timestamp.from_now(metricq.Timedelta.from_string("7d"))
+
+    #     bad_metrics = {}
+
+    #     async def check_metric(metric: str) -> None:
+    #         try:
+    #             result = await client.history_aggregate(
+    #                 metric, start_time=start_time, end_time=end_time, timeout=_TIMEOUT
+    #             )
+    #             if not math.isfinite(result.minimum) or not math.isfinite(
+    #                 result.maximum
+    #             ):
+    #                 bad_metrics[metric] = result
+    #         except asyncio.TimeoutError:
+    #             logger.error("TimeoutError for {}", metric)
+    #         except metricq.exceptions.HistoryError as e:
+    #             logger.error("HistoryError for {}: {}", metric, e)
+
+    #     requests = [check_metric(metric) for metric in metrics]
+
+    #     with click.progressbar(length=len(requests)) as bar:
+    #         for request in asyncio.as_completed(requests):
+    #             await request
+    #             bar.update(1)
+
+    #     if bad_metrics:
+    #         logger.error("Found {} metrics with non-finite numbers:", len(bad_metrics))
+    #         for metric, aggregate in sorted(bad_metrics.items(), reverse=True):
+    #             print(metric, aggregate)
+    #     else:
+    #         logger.info("No metrics with non-finite numbers found.")
+
+    async def get_cluster_issues(self):
+        return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
