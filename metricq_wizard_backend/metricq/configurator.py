@@ -765,16 +765,30 @@ class Configurator(Client):
             # TODO add check for queue bindings
 
     async def create_issue_report(
-        self, date: str = None, severity: str = None, **kwargs: Any
+        self,
+        type: str,
+        scope_type: str,
+        scope: str,
+        date: str = None,
+        severity: str = None,
+        **kwargs: Any,
     ):
-        if severity is None:
-            kwargs["severity"] = "warning"
-        if date is None:
-            kwargs["date"] = str(metricq.Timestamp.now().datetime.astimezone())
         report = await self.couchdb_db_issues.create(
-            id=str(uuid.uuid4()),
-            data=kwargs,
+            id=f"{type}-{scope_type}-{scope}", exists_ok=True, data=kwargs
         )
+
+        report["severity"] = "warning" if severity is None else severity
+        if not "date" in report:
+            report["date"] = (
+                str(metricq.Timestamp.now().datetime.astimezone())
+                if date is None
+                else date
+            )
+
+        report["type"] = type
+        report["scope_type"] = scope_type
+        report["scope"] = scope
+
         await report.save()
 
     async def check_metrics_for_dead(
@@ -782,20 +796,15 @@ class Configurator(Client):
     ) -> None:
         logger.info(f"Checking {len(metrics)} metrics for dead metrics.")
 
-        dead_metrics: list[tuple[metricq.Timedelta, metricq.Timestamp, str]] = []
-        no_value_metrics: set[str] = set()
-        timeout_metrics: set[str] = set()
-        error_metrics: set[str] = set()
-
         async def check_metric(metric: str, allowed_age: metricq.Timedelta) -> None:
             try:
                 result = await client.history_last_value(metric, timeout=60)
                 if result is None:
-                    no_value_metrics.add(metric)
                     await self.create_issue_report(
                         scope_type="metric",
                         scope=metric,
                         type="no_value",
+                        severity="warning",
                         source=metrics[metric]["source"],
                     )
                     return
@@ -803,31 +812,30 @@ class Configurator(Client):
                 if age.s < 0:
                     logger.error("Negative age for {}", metric)
                 elif age > allowed_age:
-                    dead_metrics.append((age, result.timestamp, metric))
-
                     await self.create_issue_report(
                         scope_type="metric",
                         scope=metric,
                         type="dead",
+                        severity="error",
                         last_timestamp=str(result.timestamp.datetime.astimezone()),
                         source=metrics[metric]["source"],
                     )
             except asyncio.TimeoutError:
                 logger.debug("TimeoutError for {}", metric)
-                timeout_metrics.add(metric)
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
+                    severity="info",
                     type="timeout",
                     source=metrics[metric]["source"],
                 )
             except metricq.exceptions.HistoryError as e:
                 logger.debug("HistoryError for {}: {}", metric, e)
-                error_metrics.add(metric)
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
                     type="errored",
+                    severity="info",
                     error=str(e),
                     source=metrics[metric]["source"],
                 )
@@ -866,22 +874,11 @@ class Configurator(Client):
             for metric, metadata in metrics.items()
         ]
 
+        # TODO chunk it for performance?
         for request in asyncio.as_completed(requests):
             await request
 
-        if dead_metrics:
-            logger.error("Found {} dead metrics:", len(dead_metrics))
-            # for age, timestamp, metric in sorted(dead_metrics):
-            #     pass
-
-        if no_value_metrics:
-            logger.error("Found {} metrics without a value:", len(no_value_metrics))
-
-        if timeout_metrics:
-            logger.error("Found {} metrics with a timeout:", len(timeout_metrics))
-
-        if error_metrics:
-            logger.error("Found {} metrics with an error:", len(error_metrics))
+        logger.info(f"Finished Check.")
 
     # async def check_metrics_for_infinite(
     #     client: metricq.HistoryClient, metrics: dict[str, JsonDict]
