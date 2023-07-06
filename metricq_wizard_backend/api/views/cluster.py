@@ -42,9 +42,19 @@ async def get_client_list(request: Request):
 
 
 @routes.post("/api/cluster/health_scan")
-async def get_client_list(request: Request):
+async def post_health_scan(request: Request):
     configurator: Configurator = request.app["metricq_client"]
 
     asyncio.create_task(configurator.scan_cluster())
 
     return json_response(data={"status": "created"}, status=202)
+
+
+@routes.delete("/api/cluster/issues/{issue}")
+async def delete_issue(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+    issue = request.match_info["issue"]
+
+    await configurator.delete_issue_report(*issue.split("-"))
+
+    return json_response(data={"status": "ok"})

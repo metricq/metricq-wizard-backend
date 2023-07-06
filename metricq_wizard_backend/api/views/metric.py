@@ -147,6 +147,48 @@ async def post_metrics_delete_metadata(request: Request):
         )
 
 
+@routes.post("/api/metrics/archive")
+async def post_metrics_delete_metadata(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or not "metrics" in data
+        or not isinstance(data["metrics"], list)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: list[metricq.Metric] = data["metrics"]
+
+    if any([not isinstance(id, str) for id in metrics]) or len(metrics) == 0:
+        return json_response(
+            {"status": "error", "message": "Invalid metric list in request"}, status=400
+        )
+
+    archived_metrics = await client.archive_metrics(metrics)
+
+    if set(archived_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "archived": archived_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't delete all metrics.",
+                "archived": archived_metrics,
+                "failed": list(set(metrics) - set(archived_metrics)),
+            },
+            status=400,
+        )
+
+
 @routes.post("/api/metrics/database/defaults")
 async def post_metric_database_default_config(request: Request):
     client: Configurator = request.app["metricq_client"]

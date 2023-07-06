@@ -22,7 +22,7 @@ import datetime
 import functools
 import hashlib
 import json
-import uuid
+import math
 from asyncio import Lock, gather
 from collections import defaultdict
 from itertools import islice
@@ -749,19 +749,45 @@ class Configurator(Client):
 
         return deleted_ids
 
+    async def archive_metrics(self, metrics: list[str]) -> list[str]:
+        archived_ids = []
+        # We don't want to raise an error if the metric doesn't exist, so we
+        # use the `create` parameter.
+        async for doc in self.couchdb_db_metadata.docs(metrics, create=True):
+            if not doc.exists:
+                # if the document doesn't exist, we skip it.
+                # No actual document will be created on the server,
+                # as save() was never called.
+                continue
+
+            try:
+                if "archived" not in doc:
+                    doc["archived"] = str(metricq.Timestamp.now().datetime.astimezone())
+
+                    await doc.save()
+
+                    # saving did work, so we can add id to the list
+                    archived_ids.append(doc.id)
+            except ConflictError:
+                # if the saving didn't work, we simply skip the error.
+                # On a logical side, this error means that the metric was declared
+                # while we try to update it, or someone else did hit delete or archive as well.
+                # let the frontend deal with it.
+                pass
+
+        return archived_ids
+
     async def scan_cluster(self) -> None:
-        # TODO find a better way to not create duplicate reports
-        await self.couchdb_db_issues.delete()
-        self.couchdb_db_issues = await self.couchdb_client.create(
-            "issues", exists_ok=True
-        )
+        # TODO call this method periodically with a worker
         async with metricq.HistoryClient(
             self.token, self._management_url, add_uuid=True
         ) as client:
             metrics = await client.get_metrics(prefix="", limit=999999, metadata=True)
 
-            # await self.check_metrics_for_infinite(metrics)
-            await self.check_metrics_for_dead(client, metrics)
+            await asyncio.gather(
+                self.check_metrics_for_infinite(client, metrics),
+                self.check_metrics_for_dead(client, metrics),
+            )
             # TODO add check for queue bindings
 
     async def create_issue_report(
@@ -774,32 +800,55 @@ class Configurator(Client):
         **kwargs: Any,
     ):
         report = await self.couchdb_db_issues.create(
-            id=f"{type}-{scope_type}-{scope}", exists_ok=True, data=kwargs
+            id=f"{type}-{scope_type}-{scope}", exists_ok=True
         )
 
         report["severity"] = "warning" if severity is None else severity
-        if not "date" in report:
-            report["date"] = (
+
+        if not "first_detection_date" in report:
+            # only set first_detection_date when creating the report, not
+            # on updates
+            report["first_detection_date"] = (
                 str(metricq.Timestamp.now().datetime.astimezone())
                 if date is None
                 else date
             )
 
+        report["date"] = (
+            str(metricq.Timestamp.now().datetime.astimezone()) if date is None else date
+        )
+
         report["type"] = type
         report["scope_type"] = scope_type
         report["scope"] = scope
 
+        # entries in the new kwargs should take precedents over existing entries
+        for key, val in kwargs.items():
+            report[key] = val
+
         await report.save()
+
+    async def delete_issue_report(
+        self,
+        type: str,
+        scope_type: str,
+        scope: str,
+    ):
+        report = await self.couchdb_db_issues.create(
+            id=f"{type}-{scope_type}-{scope}", exists_ok=True
+        )
+        if report.exists:
+            await report.delete()
 
     async def check_metrics_for_dead(
         self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
     ) -> None:
-        logger.info(f"Checking {len(metrics)} metrics for dead metrics.")
-
         async def check_metric(metric: str, allowed_age: metricq.Timedelta) -> None:
             try:
                 result = await client.history_last_value(metric, timeout=60)
+
                 if result is None:
+                    # No data points stored yet. This is bad.
                     await self.create_issue_report(
                         scope_type="metric",
                         scope=metric,
@@ -808,29 +857,84 @@ class Configurator(Client):
                         source=metrics[metric]["source"],
                     )
                     return
+
+                # we have a valid result, hence, there are stored data points.
+                await self.delete_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="no_value",
+                )
+
                 age = metricq.Timestamp.now() - result.timestamp
-                if age.s < 0:
-                    logger.error("Negative age for {}", metric)
-                elif age > allowed_age:
+
+                # Archived metrics are supposed to not receive new data points.
+                # For such metrics, the archived metadata is the ISO8601 string, when
+                # the metric was archived.
+                if age > allowed_age and not metrics[metric].get("archived"):
+                    # We haven't received a new data point in a while and the metric
+                    # wasn't archived => It's dead, Jimmy.
                     await self.create_issue_report(
                         scope_type="metric",
                         scope=metric,
                         type="dead",
                         severity="error",
                         last_timestamp=str(result.timestamp.datetime.astimezone()),
-                        source=metrics[metric]["source"],
+                        source=metrics[metric].get("source"),
                     )
+                    # if the metric is dead, it can't be undead as well
+                    await self.delete_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="undead",
+                    )
+                elif age <= allowed_age and metrics[metric].get("archived") is not None:
+                    # the metric is archived, but we recently received a new data point
+                    # => Zombies are here, back in my dayz, you'd reload your hatchet now.
+                    await self.create_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="undead",
+                        severity="info",
+                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        source=metrics[metric].get("source"),
+                        archived=metrics[metric].get("archived"),
+                    )
+                    # if the metric is undead, it can't be dead as well
+                    await self.delete_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="dead",
+                    )
+                else:
+                    # this is the happy case, everything's fine.
+                    await self.delete_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="dead",
+                    )
+                    await self.delete_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="undead",
+                    )
+
+                # if we got here, the metric didn't time out. so remove those reports
+                await self.delete_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="timeout",
+                )
+
             except asyncio.TimeoutError:
-                logger.debug("TimeoutError for {}", metric)
+                # this likely means that the bindings for this metric is borked
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    severity="info",
+                    severity="warning",
                     type="timeout",
                     source=metrics[metric]["source"],
                 )
             except metricq.exceptions.HistoryError as e:
-                logger.debug("HistoryError for {}: {}", metric, e)
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
@@ -874,49 +978,56 @@ class Configurator(Client):
             for metric, metadata in metrics.items()
         ]
 
-        # TODO chunk it for performance?
         for request in asyncio.as_completed(requests):
             await request
 
-        logger.info(f"Finished Check.")
+    async def check_metrics_for_infinite(
+        self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
+    ) -> None:
+        start_time = metricq.Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
+        end_time = metricq.Timestamp.from_now(metricq.Timedelta.from_string("7d"))
 
-    # async def check_metrics_for_infinite(
-    #     client: metricq.HistoryClient, metrics: dict[str, JsonDict]
-    # ) -> None:
-    #     logger.info(f"Checking {len(metrics)} metrics for non-finite numbers.")
+        async def check_metric(metric: str) -> None:
+            try:
+                result = await client.history_aggregate(
+                    metric, start_time=start_time, end_time=end_time, timeout=60
+                )
+                if result.count and (
+                    not math.isfinite(result.minimum)
+                    or not math.isfinite(result.maximum)
+                ):
+                    await self.create_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="infinite",
+                        severity="info",
+                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        source=metrics[metric]["source"],
+                    )
+                else:
+                    await self.delete_issue_report(
+                        scope_type="metric",
+                        scope=metric,
+                        type="infinite",
+                    )
 
-    #     start_time = metricq.Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
-    #     end_time = metricq.Timestamp.from_now(metricq.Timedelta.from_string("7d"))
+            except asyncio.TimeoutError:
+                # we should see this in the dead metrics check as well, so don't bother here.
+                pass
+            except metricq.exceptions.HistoryError as e:
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="errored",
+                    severity="info",
+                    error=str(e),
+                    source=metrics[metric]["source"],
+                )
 
-    #     bad_metrics = {}
+        requests = [check_metric(metric) for metric in metrics]
 
-    #     async def check_metric(metric: str) -> None:
-    #         try:
-    #             result = await client.history_aggregate(
-    #                 metric, start_time=start_time, end_time=end_time, timeout=_TIMEOUT
-    #             )
-    #             if not math.isfinite(result.minimum) or not math.isfinite(
-    #                 result.maximum
-    #             ):
-    #                 bad_metrics[metric] = result
-    #         except asyncio.TimeoutError:
-    #             logger.error("TimeoutError for {}", metric)
-    #         except metricq.exceptions.HistoryError as e:
-    #             logger.error("HistoryError for {}: {}", metric, e)
-
-    #     requests = [check_metric(metric) for metric in metrics]
-
-    #     with click.progressbar(length=len(requests)) as bar:
-    #         for request in asyncio.as_completed(requests):
-    #             await request
-    #             bar.update(1)
-
-    #     if bad_metrics:
-    #         logger.error("Found {} metrics with non-finite numbers:", len(bad_metrics))
-    #         for metric, aggregate in sorted(bad_metrics.items(), reverse=True):
-    #             print(metric, aggregate)
-    #     else:
-    #         logger.info("No metrics with non-finite numbers found.")
+        for request in asyncio.as_completed(requests):
+            await request
 
     async def get_cluster_issues(self):
         return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
