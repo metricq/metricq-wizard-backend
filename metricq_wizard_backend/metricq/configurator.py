@@ -787,6 +787,7 @@ class Configurator(Client):
             await asyncio.gather(
                 self.check_metrics_for_infinite(client, metrics),
                 self.check_metrics_for_dead(client, metrics),
+                self.check_metrics_metadata(metrics),
             )
             # TODO add check for queue bindings
 
@@ -839,6 +840,69 @@ class Configurator(Client):
         )
         if report.exists:
             await report.delete()
+
+    async def check_metrics_metadata(self, metrics: dict[str, JsonDict]):
+        async def check_metric_metadata(metric, metadata):
+            # This check is extra from missing_metadata, because it is a bit more
+            # important, but new. We want to enforce that every metric has to be
+            # either historic or not historic, i.e. only live.
+            if "historic" not in metadata or not isinstance(metadata["historic"], bool):
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="missing_historic",
+                    severity="info",
+                    source=metrics[metric]["source"],
+                )
+            else:
+                await self.delete_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="missing_historic",
+                )
+
+            missing_metadata = []
+
+            if "rate" not in metadata or not isinstance(metadata["rate"], float):
+                missing_metadata.append("rate")
+
+            if (
+                "description" not in metadata
+                or not isinstance(metadata["description"], str)
+                or metadata["description"].empty()
+            ):
+                missing_metadata.append("description")
+
+            if (
+                "unit" not in metadata
+                or metadata["unit"].empty()
+                or not isinstance(metadata["unit"], str)
+            ):
+                missing_metadata.append("unit")
+
+            if missing_metadata:
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="missing_metadata",
+                    severity="info",
+                    source=metrics[metric]["source"],
+                    missing_metadata=missing_metadata,
+                )
+            else:
+                await self.delete_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="missing_metadata",
+                )
+
+        for check in asyncio.as_completed(
+            [
+                check_metric_metadata(metric, metadata)
+                for metric, metadata in metrics.items()
+            ]
+        ):
+            await check
 
     async def check_metrics_for_dead(
         self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
