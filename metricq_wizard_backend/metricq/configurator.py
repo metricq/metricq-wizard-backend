@@ -26,6 +26,7 @@ import math
 from asyncio import Lock, gather
 from collections import defaultdict
 from itertools import islice
+import re
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from aiocache import SimpleMemoryCache, cached
@@ -788,6 +789,7 @@ class Configurator(Client):
                 self.check_metrics_for_infinite(client, metrics),
                 self.check_metrics_for_dead(client, metrics),
                 self.check_metrics_metadata(metrics),
+                self.check_metric_names(),
             )
             # TODO add check for queue bindings
 
@@ -1005,7 +1007,7 @@ class Configurator(Client):
                     type="errored",
                     severity="info",
                     error=str(e),
-                    source=metrics[metric]["source"],
+                    source=metrics[metric].get("source"),
                 )
 
         def compute_allowed_age(metadata: JsonDict) -> metricq.Timedelta:
@@ -1066,7 +1068,7 @@ class Configurator(Client):
                         type="infinite",
                         severity="info",
                         last_timestamp=str(result.timestamp.datetime.astimezone()),
-                        source=metrics[metric]["source"],
+                        source=metrics[metric].get("source"),
                     )
                 else:
                     await self.delete_issue_report(
@@ -1085,13 +1087,38 @@ class Configurator(Client):
                     type="errored",
                     severity="info",
                     error=str(e),
-                    source=metrics[metric]["source"],
+                    source=metrics[metric].get("source"),
                 )
 
         requests = [check_metric(metric) for metric in metrics]
 
         for request in asyncio.as_completed(requests):
             await request
+
+    async def check_metric_names(self):
+        """
+        Checks all metric names in the database against the regex.
+        """
+        async for metric in self.couchdb_db_metadata.all_docs.ids():
+            if metric.startswith("_design/"):
+                # these are special, don't touch them
+                continue
+
+            if not re.match(r"([a-zA-Z][a-zA-Z0-9_]+\.)+[a-zA-Z][a-zA-Z0-9_]+", metric):
+                doc = await self.couchdb_db_metadata.get(metric)
+                await self.create_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="invalid_name",
+                    severity="info",
+                    source=doc.get("source"),
+                )
+            else:
+                await self.delete_issue_report(
+                    scope_type="metric",
+                    scope=metric,
+                    type="invalid_name",
+                )
 
     async def get_cluster_issues(self):
         return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
