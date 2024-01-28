@@ -780,6 +780,9 @@ class Configurator(Client):
 
     async def scan_cluster(self) -> None:
         # TODO call this method periodically with a worker
+
+        logger.warn("Starting Cluster Health Scan")
+
         async with metricq.HistoryClient(
             self.token, self._management_url, add_uuid=True
         ) as client:
@@ -789,9 +792,13 @@ class Configurator(Client):
                 self.check_metrics_for_infinite(client, metrics),
                 self.check_metrics_for_dead(client, metrics),
                 self.check_metrics_metadata(metrics),
-                self.check_metric_names(),
+                # TODO there is no tooling for renaming metrics, so bad names
+                # is nothing we should warn about yet.
+                # self.check_metric_names(),
             )
             # TODO add check for queue bindings
+
+        logger.warn("Cluster Health Scan Finished")
 
     async def create_issue_report(
         self,
@@ -845,6 +852,11 @@ class Configurator(Client):
 
     async def check_metrics_metadata(self, metrics: dict[str, JsonDict]):
         async def check_metric_metadata(metric, metadata):
+            try:
+                source = metrics[metric]["source"]
+            except KeyError:
+                source = None
+
             # This check is extra from missing_metadata, because it is a bit more
             # important, but new. We want to enforce that every metric has to be
             # either historic or not historic, i.e. only live.
@@ -853,8 +865,8 @@ class Configurator(Client):
                     scope_type="metric",
                     scope=metric,
                     type="missing_historic",
-                    severity="info",
-                    source=metrics[metric]["source"],
+                    severity="warn",
+                    source=source,
                 )
             else:
                 await self.delete_issue_report(
@@ -871,14 +883,14 @@ class Configurator(Client):
             if (
                 "description" not in metadata
                 or not isinstance(metadata["description"], str)
-                or metadata["description"].empty()
+                or not metadata["description"]
             ):
                 missing_metadata.append("description")
 
             if (
                 "unit" not in metadata
-                or metadata["unit"].empty()
                 or not isinstance(metadata["unit"], str)
+                or not metadata["unit"]
             ):
                 missing_metadata.append("unit")
 
@@ -888,7 +900,7 @@ class Configurator(Client):
                     scope=metric,
                     type="missing_metadata",
                     severity="info",
-                    source=metrics[metric]["source"],
+                    source=source,
                     missing_metadata=missing_metadata,
                 )
             else:
@@ -920,7 +932,7 @@ class Configurator(Client):
                         scope=metric,
                         type="no_value",
                         severity="warning",
-                        source=metrics[metric]["source"],
+                        source=metrics[metric].get("source"),
                     )
                     return
 
@@ -960,7 +972,7 @@ class Configurator(Client):
                         scope_type="metric",
                         scope=metric,
                         type="undead",
-                        severity="info",
+                        severity="warning",
                         last_timestamp=str(result.timestamp.datetime.astimezone()),
                         source=metrics[metric].get("source"),
                         archived=metrics[metric].get("archived"),
@@ -998,7 +1010,7 @@ class Configurator(Client):
                     scope=metric,
                     severity="warning",
                     type="timeout",
-                    source=metrics[metric]["source"],
+                    source=metrics[metric].get("source"),
                 )
             except metricq.exceptions.HistoryError as e:
                 await self.create_issue_report(
