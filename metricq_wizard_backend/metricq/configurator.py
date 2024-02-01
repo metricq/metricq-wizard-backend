@@ -1044,7 +1044,9 @@ class Configurator(Client):
                 )
 
         def compute_allowed_age(metadata: JsonDict) -> metricq.Timedelta:
-            tolerance = metricq.Timedelta.from_string("1s")
+            # TODO tolerance is rather high, because in prod, checks seem to
+            # take a while, which messes up the timings :(
+            tolerance = metricq.Timedelta.from_string("1min")
             try:
                 rate = metadata["rate"]
                 if not isinstance(rate, (int, float)):
