@@ -24,7 +24,6 @@ import metricq
 from aiohttp.web_request import Request
 from aiohttp.web_response import json_response
 from aiohttp.web_routedef import RouteTableDef
-from aiohttp_swagger import swagger_path
 
 from metricq_wizard_backend.metricq import Configurator
 
@@ -39,6 +38,15 @@ async def get_client_list(request: Request):
     configurator: Configurator = request.app["metricq_client"]
 
     return json_response(data=await configurator.get_cluster_issues())
+
+
+@routes.post("/api/cluster/issues")
+async def get_client_list_filtered(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+
+    ctx = await request.json()
+
+    return json_response(data=await configurator.find_cluster_issues(**ctx))
 
 
 @routes.post("/api/cluster/health_scan")

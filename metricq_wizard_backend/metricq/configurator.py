@@ -241,7 +241,8 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(selector)
+                    "Invalid selector type: {}, supported: str, list", type(
+                        selector)
                 )
 
         if selector_dict:
@@ -300,7 +301,8 @@ class Configurator(Client):
     ):
         configurations_by_database = {}
         for config in metric_database_configurations:
-            config_list = configurations_by_database.get(config.database_id, [])
+            config_list = configurations_by_database.get(
+                config.database_id, [])
             config_list.append(config)
             configurations_by_database[config.database_id] = config_list
 
@@ -321,7 +323,8 @@ class Configurator(Client):
 
                         if metadata:
                             if metadata.get("historic", False):
-                                logger.warn("Metric already in a database. Ignoring!")
+                                logger.warn(
+                                    "Metric already in a database. Ignoring!")
                             else:
                                 if (
                                     metric_database_configuration.id
@@ -485,10 +488,12 @@ class Configurator(Client):
             raise AttributeError("unknown format requested: {}".format(format))
 
         if infix is not None and prefix is not None:
-            raise AttributeError('cannot get_metrics with both "prefix" and "infix"')
+            raise AttributeError(
+                'cannot get_metrics with both "prefix" and "infix"')
 
         if source is not None and historic is not None:
-            raise AttributeError('cannot get_metrics with both "historic" and "source"')
+            raise AttributeError(
+                'cannot get_metrics with both "historic" and "source"')
 
         selector_dict = dict()
         if selector is not None:
@@ -504,7 +509,8 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(selector)
+                    "Invalid selector type: {}, supported: str, list", type(
+                        selector)
                 )
         if historic is not None:
             if not isinstance(historic, bool):
@@ -536,7 +542,8 @@ class Configurator(Client):
             if infix is None:
                 request_prefix = prefix
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view("index", "historic")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "index", "historic")
                 elif source is not None:
                     endpoint = self.couchdb_db_metadata.view("index", "source")
                     request_prefix = None
@@ -550,9 +557,11 @@ class Configurator(Client):
                 if limit is not None:
                     request_limit = 6 * limit
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view("components", "historic")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "components", "historic")
                 else:
-                    endpoint = self.couchdb_db_metadata.view("components", "all")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "components", "all")
 
             if format == "array":
                 metrics = [
@@ -583,7 +592,8 @@ class Configurator(Client):
         for transformer_metric in config.get("metrics", {}):
             if transformer_metric == metric:
                 config_hash = hashlib.sha256(
-                    json.dumps(config["metrics"][transformer_metric]).encode("utf-8")
+                    json.dumps(config["metrics"]
+                               [transformer_metric]).encode("utf-8")
                 ).hexdigest()
                 logger.info("JSON hash is {}", config_hash)
                 return {
@@ -763,7 +773,8 @@ class Configurator(Client):
 
             try:
                 if "archived" not in doc:
-                    doc["archived"] = str(metricq.Timestamp.now().datetime.astimezone())
+                    doc["archived"] = str(
+                        metricq.Timestamp.now().datetime.astimezone())
 
                     await doc.save()
 
@@ -825,7 +836,8 @@ class Configurator(Client):
             )
 
         report["date"] = (
-            str(metricq.Timestamp.now().datetime.astimezone()) if date is None else date
+            str(metricq.Timestamp.now().datetime.astimezone()
+                ) if date is None else date
         )
 
         report["type"] = type
@@ -894,12 +906,19 @@ class Configurator(Client):
             ):
                 missing_metadata.append("unit")
 
+            if (
+                "source" not in metadata
+                or not isinstance(metadata["source"], str)
+                or not metadata["source"]
+            ):
+                missing_metadata.append("source")
+
             if missing_metadata:
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
                     type="missing_metadata",
-                    severity="info",
+                    severity="error" if "source" in missing_metadata else "info",
                     source=source,
                     missing_metadata=missing_metadata,
                 )
@@ -956,7 +975,8 @@ class Configurator(Client):
                         scope=metric,
                         type="dead",
                         severity="error",
-                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        last_timestamp=str(
+                            result.timestamp.datetime.astimezone()),
                         source=metrics[metric].get("source"),
                     )
                     # if the metric is dead, it can't be undead as well
@@ -973,7 +993,8 @@ class Configurator(Client):
                         scope=metric,
                         type="undead",
                         severity="warning",
-                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        last_timestamp=str(
+                            result.timestamp.datetime.astimezone()),
                         source=metrics[metric].get("source"),
                         archived=metrics[metric].get("archived"),
                     )
@@ -1028,7 +1049,8 @@ class Configurator(Client):
                 rate = metadata["rate"]
                 if not isinstance(rate, (int, float)):
                     logger.error(
-                        "Invalid rate: {} ({}) [{}]", rate, type(rate), metadata
+                        "Invalid rate: {} ({}) [{}]", rate, type(
+                            rate), metadata
                     )
                 else:
                     tolerance += metricq.Timedelta.from_s(1 / rate)
@@ -1063,7 +1085,8 @@ class Configurator(Client):
         self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
     ) -> None:
         start_time = metricq.Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
-        end_time = metricq.Timestamp.from_now(metricq.Timedelta.from_string("7d"))
+        end_time = metricq.Timestamp.from_now(
+            metricq.Timedelta.from_string("7d"))
 
         async def check_metric(metric: str) -> None:
             try:
@@ -1079,7 +1102,8 @@ class Configurator(Client):
                         scope=metric,
                         type="infinite",
                         severity="info",
-                        last_timestamp=str(result.timestamp.datetime.astimezone()),
+                        last_timestamp=str(
+                            result.timestamp.datetime.astimezone()),
                         source=metrics[metric].get("source"),
                     )
                 else:
@@ -1134,3 +1158,22 @@ class Configurator(Client):
 
     async def get_cluster_issues(self):
         return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
+
+    async def find_cluster_issues(self, currentPage, perPage, sortBy, sortDesc, **kwargs):
+        skip = (currentPage - 1) * perPage
+        limit = perPage
+
+        if sortBy == "id":
+            view = self.couchdb_db_issues.all_docs
+        elif sortBy == "severity":
+            view = self.couchdb_db_issues.view("sortedBy", "severity")
+        elif sortBy == "scope":
+            view = self.couchdb_db_issues.view("sortedBy", "scope")
+        elif sortBy == "issue":
+            view = self.couchdb_db_issues.view("sortedBy", "type")
+
+        response = await view.get(include_docs=True, limit=limit, skip=skip, descending=sortDesc)
+        return {
+            "totalRows": response.total_rows,
+            "rows": [doc.data for doc in response.docs()],
+        }
