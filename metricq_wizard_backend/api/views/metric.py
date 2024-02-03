@@ -112,7 +112,7 @@ async def post_metrics_delete_metadata(request: Request):
 
     if (
         not isinstance(data, dict)
-        or not "metrics" in data
+        or "metrics" not in data
         or not isinstance(data["metrics"], list)
     ):
         return json_response(
@@ -148,13 +148,13 @@ async def post_metrics_delete_metadata(request: Request):
 
 
 @routes.post("/api/metrics/archive")
-async def post_metrics_delete_metadata(request: Request):
+async def post_metrics_archive(request: Request):
     client: Configurator = request.app["metricq_client"]
     data: dict[str, Any] = await request.json()
 
     if (
         not isinstance(data, dict)
-        or not "metrics" in data
+        or "metrics" not in data
         or not isinstance(data["metrics"], list)
     ):
         return json_response(
@@ -184,6 +184,49 @@ async def post_metrics_delete_metadata(request: Request):
                 "message": "Couldn't delete all metrics.",
                 "archived": archived_metrics,
                 "failed": list(set(metrics) - set(archived_metrics)),
+            },
+            status=400,
+        )
+
+
+@routes.post("/api/metrics/historic")
+async def post_metrics_historic(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or "metrics" not in data
+        or not isinstance(data["metrics"], dict)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: dict[metricq.Metric, bool] = data["metrics"]
+
+    if any([not isinstance(id, str) or not isinstance(value, bool) for id, value in metrics]) or len(metrics) == 0:
+        return json_response(
+            {"status": "error", "message": "Invalid metric dict in request"},
+            status=400
+        )
+
+    updated_metrics = await client.metrics_update_historic(metrics)
+
+    if set(updated_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "updated": updated_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't update all metrics.",
+                "updated": updated_metrics,
+                "failed": list(set(metrics) - set(updated_metrics)),
             },
             status=400,
         )

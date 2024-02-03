@@ -23,19 +23,20 @@ import functools
 import hashlib
 import json
 import math
+import re
 from asyncio import Lock, gather
 from collections import defaultdict
 from itertools import islice
-import re
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+import metricq
 from aiocache import SimpleMemoryCache, cached
 from aiocouch import ConflictError, CouchDB, Document, database
-import metricq
 from metricq import Agent, Client
 from metricq.logging import get_logger
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfiguration
+from metricq_wizard_backend.metricq.cluster_scanner import ClusterScanner
 from metricq_wizard_backend.metricq.session_manager import (
     UserSession,
     UserSessionManager,
@@ -99,6 +100,10 @@ class Configurator(Client):
 
         self.user_session_manager = UserSessionManager()
 
+        self.cluster_scanner = ClusterScanner(
+            self.token, self._management_url, self.couchdb_client
+        )
+
         self._config_locks = {}
 
     async def connect(self):
@@ -128,6 +133,8 @@ class Configurator(Client):
         self.couchdb_db_issues = await self.couchdb_client.create(
             "issues", exists_ok=True
         )
+
+        await self.cluster_scanner.connect()
 
         # After that, we do the MetricQ connection stuff
         await super().connect()
@@ -241,8 +248,7 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(
-                        selector)
+                    "Invalid selector type: {}, supported: str, list", type(selector)
                 )
 
         if selector_dict:
@@ -301,8 +307,7 @@ class Configurator(Client):
     ):
         configurations_by_database = {}
         for config in metric_database_configurations:
-            config_list = configurations_by_database.get(
-                config.database_id, [])
+            config_list = configurations_by_database.get(config.database_id, [])
             config_list.append(config)
             configurations_by_database[config.database_id] = config_list
 
@@ -323,8 +328,7 @@ class Configurator(Client):
 
                         if metadata:
                             if metadata.get("historic", False):
-                                logger.warn(
-                                    "Metric already in a database. Ignoring!")
+                                logger.warn("Metric already in a database. Ignoring!")
                             else:
                                 if (
                                     metric_database_configuration.id
@@ -488,12 +492,10 @@ class Configurator(Client):
             raise AttributeError("unknown format requested: {}".format(format))
 
         if infix is not None and prefix is not None:
-            raise AttributeError(
-                'cannot get_metrics with both "prefix" and "infix"')
+            raise AttributeError('cannot get_metrics with both "prefix" and "infix"')
 
         if source is not None and historic is not None:
-            raise AttributeError(
-                'cannot get_metrics with both "historic" and "source"')
+            raise AttributeError('cannot get_metrics with both "historic" and "source"')
 
         selector_dict = dict()
         if selector is not None:
@@ -509,8 +511,7 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(
-                        selector)
+                    "Invalid selector type: {}, supported: str, list", type(selector)
                 )
         if historic is not None:
             if not isinstance(historic, bool):
@@ -542,8 +543,7 @@ class Configurator(Client):
             if infix is None:
                 request_prefix = prefix
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "index", "historic")
+                    endpoint = self.couchdb_db_metadata.view("index", "historic")
                 elif source is not None:
                     endpoint = self.couchdb_db_metadata.view("index", "source")
                     request_prefix = None
@@ -557,11 +557,9 @@ class Configurator(Client):
                 if limit is not None:
                     request_limit = 6 * limit
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "components", "historic")
+                    endpoint = self.couchdb_db_metadata.view("components", "historic")
                 else:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "components", "all")
+                    endpoint = self.couchdb_db_metadata.view("components", "all")
 
             if format == "array":
                 metrics = [
@@ -592,8 +590,7 @@ class Configurator(Client):
         for transformer_metric in config.get("metrics", {}):
             if transformer_metric == metric:
                 config_hash = hashlib.sha256(
-                    json.dumps(config["metrics"]
-                               [transformer_metric]).encode("utf-8")
+                    json.dumps(config["metrics"][transformer_metric]).encode("utf-8")
                 ).hexdigest()
                 logger.info("JSON hash is {}", config_hash)
                 return {
@@ -773,8 +770,7 @@ class Configurator(Client):
 
             try:
                 if "archived" not in doc:
-                    doc["archived"] = str(
-                        metricq.Timestamp.now().datetime.astimezone())
+                    doc["archived"] = str(metricq.Timestamp.now().datetime.astimezone())
 
                     await doc.save()
 
@@ -789,379 +785,12 @@ class Configurator(Client):
 
         return archived_ids
 
-    async def scan_cluster(self) -> None:
-        # TODO call this method periodically with a worker
-
-        logger.warn("Starting Cluster Health Scan")
-
-        async with metricq.HistoryClient(
-            self.token, self._management_url, add_uuid=True
-        ) as client:
-            metrics = await client.get_metrics(prefix="", limit=999999, metadata=True)
-
-            await asyncio.gather(
-                self.check_metrics_for_infinite(client, metrics),
-                self.check_metrics_for_dead(client, metrics),
-                self.check_metrics_metadata(metrics),
-                # TODO there is no tooling for renaming metrics, so bad names
-                # is nothing we should warn about yet.
-                # self.check_metric_names(),
-            )
-            # TODO add check for queue bindings
-
-        logger.warn("Cluster Health Scan Finished")
-
-    async def create_issue_report(
-        self,
-        type: str,
-        scope_type: str,
-        scope: str,
-        date: str = None,
-        severity: str = None,
-        **kwargs: Any,
-    ):
-        report = await self.couchdb_db_issues.create(
-            id=f"{type}-{scope_type}-{scope}", exists_ok=True
-        )
-
-        report["severity"] = "warning" if severity is None else severity
-
-        if not "first_detection_date" in report:
-            # only set first_detection_date when creating the report, not
-            # on updates
-            report["first_detection_date"] = (
-                str(metricq.Timestamp.now().datetime.astimezone())
-                if date is None
-                else date
-            )
-
-        report["date"] = (
-            str(metricq.Timestamp.now().datetime.astimezone()
-                ) if date is None else date
-        )
-
-        report["type"] = type
-        report["scope_type"] = scope_type
-        report["scope"] = scope
-
-        # entries in the new kwargs should take precedents over existing entries
-        for key, val in kwargs.items():
-            report[key] = val
-
-        await report.save()
-
-    async def delete_issue_report(
-        self,
-        type: str,
-        scope_type: str,
-        scope: str,
-    ):
-        report = await self.couchdb_db_issues.create(
-            id=f"{type}-{scope_type}-{scope}", exists_ok=True
-        )
-        if report.exists:
-            await report.delete()
-
-    async def check_metrics_metadata(self, metrics: dict[str, JsonDict]):
-        async def check_metric_metadata(metric, metadata):
-            try:
-                source = metrics[metric]["source"]
-            except KeyError:
-                source = None
-
-            # This check is extra from missing_metadata, because it is a bit more
-            # important, but new. We want to enforce that every metric has to be
-            # either historic or not historic, i.e. only live.
-            if "historic" not in metadata or not isinstance(metadata["historic"], bool):
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="missing_historic",
-                    severity="warn",
-                    source=source,
-                )
-            else:
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="missing_historic",
-                )
-
-            missing_metadata = []
-
-            if "rate" not in metadata or not isinstance(metadata["rate"], float):
-                missing_metadata.append("rate")
-
-            if (
-                "description" not in metadata
-                or not isinstance(metadata["description"], str)
-                or not metadata["description"]
-            ):
-                missing_metadata.append("description")
-
-            if (
-                "unit" not in metadata
-                or not isinstance(metadata["unit"], str)
-                or not metadata["unit"]
-            ):
-                missing_metadata.append("unit")
-
-            if (
-                "source" not in metadata
-                or not isinstance(metadata["source"], str)
-                or not metadata["source"]
-            ):
-                missing_metadata.append("source")
-
-            if missing_metadata:
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="missing_metadata",
-                    severity="error" if "source" in missing_metadata else "info",
-                    source=source,
-                    missing_metadata=missing_metadata,
-                )
-            else:
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="missing_metadata",
-                )
-
-        for check in asyncio.as_completed(
-            [
-                check_metric_metadata(metric, metadata)
-                for metric, metadata in metrics.items()
-            ]
-        ):
-            await check
-
-    async def check_metrics_for_dead(
-        self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
-    ) -> None:
-        async def check_metric(metric: str, allowed_age: metricq.Timedelta) -> None:
-            try:
-                result = await client.history_last_value(metric, timeout=60)
-
-                if result is None:
-                    # No data points stored yet. This is bad.
-                    await self.create_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="no_value",
-                        severity="warning",
-                        source=metrics[metric].get("source"),
-                    )
-                    return
-
-                # we have a valid result, hence, there are stored data points.
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="no_value",
-                )
-
-                age = metricq.Timestamp.now() - result.timestamp
-
-                # Archived metrics are supposed to not receive new data points.
-                # For such metrics, the archived metadata is the ISO8601 string, when
-                # the metric was archived.
-                if age > allowed_age and not metrics[metric].get("archived"):
-                    # We haven't received a new data point in a while and the metric
-                    # wasn't archived => It's dead, Jimmy.
-                    await self.create_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="dead",
-                        severity="error",
-                        last_timestamp=str(
-                            result.timestamp.datetime.astimezone()),
-                        source=metrics[metric].get("source"),
-                    )
-                    # if the metric is dead, it can't be undead as well
-                    await self.delete_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="undead",
-                    )
-                elif age <= allowed_age and metrics[metric].get("archived") is not None:
-                    # the metric is archived, but we recently received a new data point
-                    # => Zombies are here, back in my dayz, you'd reload your hatchet now.
-                    await self.create_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="undead",
-                        severity="warning",
-                        last_timestamp=str(
-                            result.timestamp.datetime.astimezone()),
-                        source=metrics[metric].get("source"),
-                        archived=metrics[metric].get("archived"),
-                    )
-                    # if the metric is undead, it can't be dead as well
-                    await self.delete_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="dead",
-                    )
-                else:
-                    # this is the happy case, everything's fine.
-                    await self.delete_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="dead",
-                    )
-                    await self.delete_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="undead",
-                    )
-
-                # if we got here, the metric didn't time out. so remove those reports
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="timeout",
-                )
-
-            except asyncio.TimeoutError:
-                # this likely means that the bindings for this metric is borked
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    severity="warning",
-                    type="timeout",
-                    source=metrics[metric].get("source"),
-                )
-            except metricq.exceptions.HistoryError as e:
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="errored",
-                    severity="info",
-                    error=str(e),
-                    source=metrics[metric].get("source"),
-                )
-
-        def compute_allowed_age(metadata: JsonDict) -> metricq.Timedelta:
-            # TODO tolerance is rather high, because in prod, checks seem to
-            # take a while, which messes up the timings :(
-            tolerance = metricq.Timedelta.from_string("1min")
-            try:
-                rate = metadata["rate"]
-                if not isinstance(rate, (int, float)):
-                    logger.error(
-                        "Invalid rate: {} ({}) [{}]", rate, type(
-                            rate), metadata
-                    )
-                else:
-                    tolerance += metricq.Timedelta.from_s(1 / rate)
-            except KeyError:
-                # Fall back to compute tolerance from interval
-                try:
-                    interval = metadata["interval"]
-                    if isinstance(interval, str):
-                        tolerance += metricq.Timedelta.from_string(interval)
-                    elif isinstance(interval, (int, float)):
-                        tolerance += metricq.Timedelta.from_s(interval)
-                    else:
-                        logger.error(
-                            "Invalid interval: {} ({}) [{}]",
-                            interval,
-                            type(interval),
-                            metadata,
-                        )
-                except KeyError:
-                    pass
-            return tolerance
-
-        requests = [
-            check_metric(metric, compute_allowed_age(metadata))
-            for metric, metadata in metrics.items()
-        ]
-
-        for request in asyncio.as_completed(requests):
-            await request
-
-    async def check_metrics_for_infinite(
-        self, client: metricq.HistoryClient, metrics: dict[str, JsonDict]
-    ) -> None:
-        start_time = metricq.Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
-        end_time = metricq.Timestamp.from_now(
-            metricq.Timedelta.from_string("7d"))
-
-        async def check_metric(metric: str) -> None:
-            try:
-                result = await client.history_aggregate(
-                    metric, start_time=start_time, end_time=end_time, timeout=60
-                )
-                if result.count and (
-                    not math.isfinite(result.minimum)
-                    or not math.isfinite(result.maximum)
-                ):
-                    await self.create_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="infinite",
-                        severity="info",
-                        last_timestamp=str(
-                            result.timestamp.datetime.astimezone()),
-                        source=metrics[metric].get("source"),
-                    )
-                else:
-                    await self.delete_issue_report(
-                        scope_type="metric",
-                        scope=metric,
-                        type="infinite",
-                    )
-
-            except asyncio.TimeoutError:
-                # we should see this in the dead metrics check as well, so don't bother here.
-                pass
-            except metricq.exceptions.HistoryError as e:
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="errored",
-                    severity="info",
-                    error=str(e),
-                    source=metrics[metric].get("source"),
-                )
-
-        requests = [check_metric(metric) for metric in metrics]
-
-        for request in asyncio.as_completed(requests):
-            await request
-
-    async def check_metric_names(self):
-        """
-        Checks all metric names in the database against the regex.
-        """
-        async for metric in self.couchdb_db_metadata.all_docs.ids():
-            if metric.startswith("_design/"):
-                # these are special, don't touch them
-                continue
-
-            if not re.match(r"([a-zA-Z][a-zA-Z0-9_]+\.)+[a-zA-Z][a-zA-Z0-9_]+", metric):
-                doc = await self.couchdb_db_metadata.get(metric)
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="invalid_name",
-                    severity="info",
-                    source=doc.get("source"),
-                )
-            else:
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    type="invalid_name",
-                )
-
     async def get_cluster_issues(self):
         return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
 
-    async def find_cluster_issues(self, currentPage, perPage, sortBy, sortDesc, **kwargs):
+    async def find_cluster_issues(
+        self, currentPage, perPage, sortBy, sortDesc, **kwargs
+    ):
         skip = (currentPage - 1) * perPage
         limit = perPage
 
@@ -1174,7 +803,9 @@ class Configurator(Client):
         elif sortBy == "issue":
             view = self.couchdb_db_issues.view("sortedBy", "type")
 
-        response = await view.get(include_docs=True, limit=limit, skip=skip, descending=sortDesc)
+        response = await view.get(
+            include_docs=True, limit=limit, skip=skip, descending=sortDesc
+        )
         return {
             "totalRows": response.total_rows,
             "rows": [doc.data for doc in response.docs()],

@@ -53,9 +53,26 @@ async def get_client_list_filtered(request: Request):
 async def post_health_scan(request: Request):
     configurator: Configurator = request.app["metricq_client"]
 
-    asyncio.create_task(configurator.scan_cluster())
+    try:
+        await configurator.scan_cluster()
+    except RuntimeError as e:
+        if e == "Scan already running":
+            return json_response(data={"status": "already running"}, status=429)
+        raise e
 
     return json_response(data={"status": "created"}, status=202)
+
+
+@routes.get("/api/cluster/health_scan")
+async def post_health_scan(request: Request):
+    configurator: Configurator = request.app["metricq_client"]
+
+    status = None
+
+    if configurator.cluster_scanner.running:
+        status = "currently running"
+
+    return json_response(data={"status": status}, status=202)
 
 
 @routes.delete("/api/cluster/issues/{issue}")
