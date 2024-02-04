@@ -205,7 +205,7 @@ async def post_metrics_historic(request: Request):
 
     metrics: dict[metricq.Metric, bool] = data["metrics"]
 
-    if any([not isinstance(id, str) or not isinstance(value, bool) for id, value in metrics]) or len(metrics) == 0:
+    if any([not isinstance(id, str) or not isinstance(value, bool) for id, value in metrics.items()]) or len(metrics) == 0:
         return json_response(
             {"status": "error", "message": "Invalid metric dict in request"},
             status=400

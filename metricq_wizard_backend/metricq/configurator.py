@@ -100,10 +100,6 @@ class Configurator(Client):
 
         self.user_session_manager = UserSessionManager()
 
-        self.cluster_scanner = ClusterScanner(
-            self.token, self._management_url, self.couchdb_client
-        )
-
         self._config_locks = {}
 
     async def connect(self):
@@ -134,10 +130,12 @@ class Configurator(Client):
             "issues", exists_ok=True
         )
 
-        await self.cluster_scanner.connect()
-
         # After that, we do the MetricQ connection stuff
         await super().connect()
+
+    async def stop(self, *args, **kwargs):
+        await self.couchdb_client.close()
+        await super().stop(*args, **kwargs)
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
     async def rabbitmq_bindings(self) -> rabbitmq.Bindings:
@@ -248,7 +246,8 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(selector)
+                    "Invalid selector type: {}, supported: str, list", type(
+                        selector)
                 )
 
         if selector_dict:
@@ -307,7 +306,8 @@ class Configurator(Client):
     ):
         configurations_by_database = {}
         for config in metric_database_configurations:
-            config_list = configurations_by_database.get(config.database_id, [])
+            config_list = configurations_by_database.get(
+                config.database_id, [])
             config_list.append(config)
             configurations_by_database[config.database_id] = config_list
 
@@ -328,7 +328,8 @@ class Configurator(Client):
 
                         if metadata:
                             if metadata.get("historic", False):
-                                logger.warn("Metric already in a database. Ignoring!")
+                                logger.warn(
+                                    "Metric already in a database. Ignoring!")
                             else:
                                 if (
                                     metric_database_configuration.id
@@ -492,10 +493,12 @@ class Configurator(Client):
             raise AttributeError("unknown format requested: {}".format(format))
 
         if infix is not None and prefix is not None:
-            raise AttributeError('cannot get_metrics with both "prefix" and "infix"')
+            raise AttributeError(
+                'cannot get_metrics with both "prefix" and "infix"')
 
         if source is not None and historic is not None:
-            raise AttributeError('cannot get_metrics with both "historic" and "source"')
+            raise AttributeError(
+                'cannot get_metrics with both "historic" and "source"')
 
         selector_dict = dict()
         if selector is not None:
@@ -511,7 +514,8 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(selector)
+                    "Invalid selector type: {}, supported: str, list", type(
+                        selector)
                 )
         if historic is not None:
             if not isinstance(historic, bool):
@@ -543,7 +547,8 @@ class Configurator(Client):
             if infix is None:
                 request_prefix = prefix
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view("index", "historic")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "index", "historic")
                 elif source is not None:
                     endpoint = self.couchdb_db_metadata.view("index", "source")
                     request_prefix = None
@@ -557,9 +562,11 @@ class Configurator(Client):
                 if limit is not None:
                     request_limit = 6 * limit
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view("components", "historic")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "components", "historic")
                 else:
-                    endpoint = self.couchdb_db_metadata.view("components", "all")
+                    endpoint = self.couchdb_db_metadata.view(
+                        "components", "all")
 
             if format == "array":
                 metrics = [
@@ -590,7 +597,8 @@ class Configurator(Client):
         for transformer_metric in config.get("metrics", {}):
             if transformer_metric == metric:
                 config_hash = hashlib.sha256(
-                    json.dumps(config["metrics"][transformer_metric]).encode("utf-8")
+                    json.dumps(config["metrics"]
+                               [transformer_metric]).encode("utf-8")
                 ).hexdigest()
                 logger.info("JSON hash is {}", config_hash)
                 return {
@@ -770,7 +778,8 @@ class Configurator(Client):
 
             try:
                 if "archived" not in doc:
-                    doc["archived"] = str(metricq.Timestamp.now().datetime.astimezone())
+                    doc["archived"] = str(
+                        metricq.Timestamp.now().datetime.astimezone())
 
                     await doc.save()
 
@@ -785,28 +794,29 @@ class Configurator(Client):
 
         return archived_ids
 
-    async def get_cluster_issues(self):
-        return [doc.data async for doc in self.couchdb_db_issues.all_docs.docs()]
+    async def metrics_update_historic(self, metrics: dict[str, bool]) -> list[str]:
+        updated_ids = []
+        # We don't want to raise an error if the metric doesn't exist, so we
+        # use the `create` parameter.
+        async for doc in self.couchdb_db_metadata.docs(list(metrics.keys()), create=True):
+            if not doc.exists:
+                # if the document doesn't exist, we skip it.
+                # No actual document will be created on the server,
+                # as save() was never called.
+                continue
 
-    async def find_cluster_issues(
-        self, currentPage, perPage, sortBy, sortDesc, **kwargs
-    ):
-        skip = (currentPage - 1) * perPage
-        limit = perPage
+            try:
+                doc["historic"] = metrics[doc.id]
 
-        if sortBy == "id":
-            view = self.couchdb_db_issues.all_docs
-        elif sortBy == "severity":
-            view = self.couchdb_db_issues.view("sortedBy", "severity")
-        elif sortBy == "scope":
-            view = self.couchdb_db_issues.view("sortedBy", "scope")
-        elif sortBy == "issue":
-            view = self.couchdb_db_issues.view("sortedBy", "type")
+                await doc.save()
 
-        response = await view.get(
-            include_docs=True, limit=limit, skip=skip, descending=sortDesc
-        )
-        return {
-            "totalRows": response.total_rows,
-            "rows": [doc.data for doc in response.docs()],
-        }
+                # saving did work, so we can add id to the list
+                updated_ids.append(doc.id)
+            except ConflictError:
+                # if the saving didn't work, we simply skip the error.
+                # On a logical side, this error means that the metric was declared
+                # while we try to update it, or someone else tried to update it
+                # as well. Let the frontend deal with it.
+                pass
+
+        return updated_ids

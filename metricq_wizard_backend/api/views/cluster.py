@@ -1,5 +1,6 @@
 # metricq-wizard
-# Copyright (C) 2023 ZIH, Technische Universitaet Dresden, Federal Republic of Germany
+# Copyright (C) 2024 ZIH, CIDS, Technische Universitaet Dresden,
+#                    Federal Republic of Germany
 #
 # All rights reserved.
 #
@@ -20,59 +21,22 @@
 
 import asyncio
 
-import metricq
 from aiohttp.web_request import Request
 from aiohttp.web_response import json_response
 from aiohttp.web_routedef import RouteTableDef
 
-from metricq_wizard_backend.metricq import Configurator
-
-logger = metricq.get_logger()
-logger.setLevel("DEBUG")
+from metricq_wizard_backend.metricq import Configurator, ClusterScanner
 
 routes = RouteTableDef()
 
 
-@routes.get("/api/cluster/issues")
-async def get_client_list(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
-
-    return json_response(data=await configurator.get_cluster_issues())
-
-
 @routes.post("/api/cluster/issues")
 async def get_client_list_filtered(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
+    scanner: ClusterScanner = request.app["cluster_scanner"]
 
     ctx = await request.json()
 
-    return json_response(data=await configurator.find_cluster_issues(**ctx))
-
-
-@routes.post("/api/cluster/health_scan")
-async def post_health_scan(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
-
-    try:
-        await configurator.scan_cluster()
-    except RuntimeError as e:
-        if e == "Scan already running":
-            return json_response(data={"status": "already running"}, status=429)
-        raise e
-
-    return json_response(data={"status": "created"}, status=202)
-
-
-@routes.get("/api/cluster/health_scan")
-async def post_health_scan(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
-
-    status = None
-
-    if configurator.cluster_scanner.running:
-        status = "currently running"
-
-    return json_response(data={"status": status}, status=202)
+    return json_response(data=await scanner.find_issues(**ctx))
 
 
 @routes.delete("/api/cluster/issues/{issue}")
@@ -83,3 +47,32 @@ async def delete_issue(request: Request):
     await configurator.delete_issue_report(*issue.split("-"))
 
     return json_response(data={"status": "ok"})
+
+
+@routes.post("/api/cluster/health_scan")
+async def post_health_scan(request: Request):
+    # this will initiate another cluster health scan run
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+
+    # this is a preliminary check. The real check will be done in the scan task
+    # itself. There might be some situations, when this endpoint doesn't return
+    # the proper response, but those cases do not really change a thing:
+    # 1. A scan just now finished. No need to rerun than anyway.
+    # 2. Someone else just now started a scan. Same result.
+    if scanner.running:
+        return json_response(data={"status": "already running"}, status=429)
+    else:
+        asyncio.create_task(scanner.run_once())
+        return json_response(data={"status": "created"}, status=202)
+
+
+@routes.get("/api/cluster/health_scan")
+async def get_health_scan(request: Request):
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+
+    status = "finished"
+
+    if scanner.running:
+        status = "running"
+
+    return json_response(data={"status": status}, status=202)
