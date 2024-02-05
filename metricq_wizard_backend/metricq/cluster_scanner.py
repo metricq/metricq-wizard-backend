@@ -78,33 +78,23 @@ class ClusterScanner:
                 logger.warn("Cluster Health Scan Finished")
 
     async def _run_scan(self) -> None:
-        # TODO add check for queue bindings
+        # TODO add check for (db) queue bindings
+        # TODO add check for token names
 
         async with HistoryClient(self.token, self.url, add_uuid=True) as client:
-            tasks = []
             async for doc in self.db_metadata.docs():
                 metric = doc.id
                 metadata = doc.data
-                tasks.append(
+                # TODO concurrently run checks for several metrics, instead of
+                # only one
+                await asyncio.gather(
                     self.check_metric_metadata(metric, metadata),
+                    self.check_metric_is_dead(client, metric, metadata),
+                    self.check_metric_for_infinites(client, metric, metadata),
+                    # there is no tooling for renaming metrics, so bad
+                    # names is nothing we should warn about yet.
+                    # self.check_metric_name(metric),
                 )
-                tasks.append(
-                    self.check_metric_is_dead(client, metric, metadata)
-                )
-                tasks.append(
-                    self.check_metric_for_infinites(
-                        client, metric, metadata)
-                )
-                # there is no tooling for renaming metrics, so bad
-                # names is nothing we should warn about yet.
-                # tasks.append(self.check_metric_name(metric))
-
-            for task in asyncio.as_completed(tasks):
-                try:
-                    await task
-                except Exception as e:
-                    logger.error("Error while checking: ", "".join(
-                        traceback.format_exception(e)))
 
     async def create_issue_report(
         self,
@@ -125,8 +115,7 @@ class ClusterScanner:
             # only set first_detection_date when creating the report, not
             # on updates
             report["first_detection_date"] = (
-                str(Timestamp.now().datetime.astimezone()
-                    ) if date is None else date
+                str(Timestamp.now().datetime.astimezone()) if date is None else date
             )
 
         report["date"] = (
@@ -223,7 +212,7 @@ class ClusterScanner:
             )
 
     async def check_metric_is_dead(
-            self, client: HistoryClient, metric: str, metadata: JsonDict
+        self, client: HistoryClient, metric: str, metadata: JsonDict
     ) -> None:
         # TODO tolerance is rather high, because in prod, checks seem to
         # take a while, which messes up the timings :(
@@ -289,8 +278,7 @@ class ClusterScanner:
                     scope=metric,
                     type="dead",
                     severity="error",
-                    last_timestamp=str(
-                        result.timestamp.datetime.astimezone()),
+                    last_timestamp=str(result.timestamp.datetime.astimezone()),
                     source=metadata.get("source"),
                 )
                 # if the metric is dead, it can't be undead as well
@@ -307,8 +295,7 @@ class ClusterScanner:
                     scope=metric,
                     type="undead",
                     severity="warning",
-                    last_timestamp=str(
-                        result.timestamp.datetime.astimezone()),
+                    last_timestamp=str(result.timestamp.datetime.astimezone()),
                     source=metadata.get("source"),
                     archived=metadata.get("archived"),
                 )
@@ -371,8 +358,7 @@ class ClusterScanner:
                 metric, start_time=start_time, end_time=end_time, timeout=60
             )
             if result.count and (
-                not math.isfinite(result.minimum) or not math.isfinite(
-                    result.maximum)
+                not math.isfinite(result.minimum) or not math.isfinite(result.maximum)
             ):
                 await self.create_issue_report(
                     scope_type="metric",
@@ -419,9 +405,7 @@ class ClusterScanner:
                 type="invalid_name",
             )
 
-    async def find_issues(
-        self, currentPage, perPage, sortBy, sortDesc, **kwargs
-    ):
+    async def find_issues(self, currentPage, perPage, sortBy, sortDesc, **kwargs):
         skip = (currentPage - 1) * perPage
         limit = perPage
 
