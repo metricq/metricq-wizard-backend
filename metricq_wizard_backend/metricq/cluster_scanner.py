@@ -17,23 +17,40 @@ logger.setLevel("INFO")
 
 
 class AsyncTaskPool:
-    def __init__(self, max_tasks: int):
+    def __init__(self, max_tasks: int, timeout: float = 0.1):
         self.max_tasks = max_tasks
-        self.pending = []
+        self.timeout = timeout
+        self.pending: set[asyncio.Task] = set()
 
-    async def append_task(self, coro: Coroutine):
-        if len(self.pending) >= self.max_tasks:
-            # TODO maybe using ALL_COMPLETED with a timeout instead?
-            done, pending = await asyncio.wait(
-                self.pending, return_when=asyncio.FIRST_COMPLETED
+    async def append_task(self, coro: Coroutine) -> None:
+        # Once there are enough pending tasks, we will wait for the timeout.
+        # Ideally, we make a good chunk of progress
+        while len(self.pending) >= self.max_tasks:
+            done, self.pending = await asyncio.wait(
+                self.pending,
+                timeout=self.timeout,
+                return_when=asyncio.ALL_COMPLETED,
             )
-            self.pending = pending
+
+            # fetch all results of the done tasks.
+            for task in done:
+                try:
+                    task.result()
+                except Exception as e:
+                    # this should never be CancelledError or InvalidStateError
+                    # besides strange cancelling on shutdown.
+                    # Other exceptions we will just log and forget about. We
+                    # have other fish to fry.
+                    logger.error("Failed to complete health check task: ", e)
+                    traceback.print_exception(e)
 
         self.pending.append(asyncio.create_task(coro))
 
-    async def completed(self):
-        await asyncio.gather(*self.pending)
-        self.pending = []
+    async def completed(self) -> None:
+        # We don't stop on exceptions. We want all tasks to complete, be it
+        # successful or not.
+        await asyncio.gather(*self.pending, return_exceptions=True)
+        self.pending = set()
 
 
 class ClusterScanner:
@@ -114,9 +131,7 @@ class ClusterScanner:
                 )
                 # there is no tooling for renaming metrics, so bad
                 # names is nothing we should warn about yet.
-                await tasks.append(
-                    self.check_metric_name(metric),
-                )
+                # await tasks.append(self.check_metric_name(metric))
 
             await tasks.completed()
 
