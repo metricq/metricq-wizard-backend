@@ -22,15 +22,20 @@ class AsyncTaskPool:
         self.timeout = timeout
         self.pending: set[asyncio.Task] = set()
 
-    async def append_task(self, coro: Coroutine) -> None:
+    async def append(self, coro: Coroutine) -> None:
+        assert len(self.pending) <= self.max_tasks
+
         # Once there are enough pending tasks, we will wait for the timeout.
         # Ideally, we make a good chunk of progress
-        while len(self.pending) >= self.max_tasks:
-            done, self.pending = await asyncio.wait(
+        while len(self.pending) == self.max_tasks:
+            done, pending = await asyncio.wait(
                 self.pending,
                 timeout=self.timeout,
                 return_when=asyncio.ALL_COMPLETED,
             )
+
+            assert self.pending == done | pending
+            self.pending = pending
 
             # fetch all results of the done tasks.
             for task in done:
@@ -44,12 +49,18 @@ class AsyncTaskPool:
                     logger.error("Failed to complete health check task: ", e)
                     traceback.print_exception(e)
 
-        self.pending.append(asyncio.create_task(coro))
+        self.pending.add(asyncio.create_task(coro))
 
     async def completed(self) -> None:
+        if len(self.pending) == 0:
+            return
+
         # We don't stop on exceptions. We want all tasks to complete, be it
         # successful or not.
         await asyncio.gather(*self.pending, return_exceptions=True)
+
+        assert all(task.done() for task in self.pending)
+
         self.pending = set()
 
 
@@ -125,10 +136,16 @@ class ClusterScanner:
                 metric = doc.id
                 metadata = doc.data
                 await tasks.append(self.check_metric_metadata(metric, metadata))
-                await tasks.append(self.check_metric_is_dead(client, metric, metadata))
-                await tasks.append(
-                    self.check_metric_for_infinites(client, metric, metadata)
-                )
+
+                if metadata.get("historic", False):
+                    # Only check the db status for historic metrics
+                    await tasks.append(
+                        self.check_metric_is_dead(client, metric, metadata)
+                    )
+                    await tasks.append(
+                        self.check_metric_for_infinites(client, metric, metadata)
+                    )
+
                 # there is no tooling for renaming metrics, so bad
                 # names is nothing we should warn about yet.
                 # await tasks.append(self.check_metric_name(metric))
