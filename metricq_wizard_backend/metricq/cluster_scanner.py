@@ -3,7 +3,7 @@ import math
 import re
 import traceback
 from contextlib import suppress
-from typing import Any
+from typing import Any, Coroutine
 
 from aiocouch import CouchDB, Database
 from metricq import HistoryClient, Timedelta, Timestamp
@@ -14,6 +14,26 @@ JsonDict = dict[str, Any]
 
 logger = get_logger()
 logger.setLevel("INFO")
+
+
+class AsyncTaskPool:
+    def __init__(self, max_tasks: int):
+        self.max_tasks = max_tasks
+        self.pending = []
+
+    async def append_task(self, coro: Coroutine):
+        if len(self.pending) >= self.max_tasks:
+            # TODO maybe using ALL_COMPLETED with a timeout instead?
+            done, pending = await asyncio.wait(
+                self.pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            self.pending = pending
+
+        self.pending.append(asyncio.create_task(coro))
+
+    async def completed(self):
+        await asyncio.gather(*self.pending)
+        self.pending = []
 
 
 class ClusterScanner:
@@ -82,19 +102,23 @@ class ClusterScanner:
         # TODO add check for token names
 
         async with HistoryClient(self.token, self.url, add_uuid=True) as client:
+            tasks = AsyncTaskPool(max_tasks=250)
+
             async for doc in self.db_metadata.docs():
                 metric = doc.id
                 metadata = doc.data
-                # TODO concurrently run checks for several metrics, instead of
-                # only one
-                await asyncio.gather(
-                    self.check_metric_metadata(metric, metadata),
-                    self.check_metric_is_dead(client, metric, metadata),
-                    self.check_metric_for_infinites(client, metric, metadata),
-                    # there is no tooling for renaming metrics, so bad
-                    # names is nothing we should warn about yet.
-                    # self.check_metric_name(metric),
+                await tasks.append(self.check_metric_metadata(metric, metadata))
+                await tasks.append(self.check_metric_is_dead(client, metric, metadata))
+                await tasks.append(
+                    self.check_metric_for_infinites(client, metric, metadata)
                 )
+                # there is no tooling for renaming metrics, so bad
+                # names is nothing we should warn about yet.
+                await tasks.append(
+                    self.check_metric_name(metric),
+                )
+
+            await tasks.completed()
 
     async def create_issue_report(
         self,
