@@ -301,6 +301,7 @@ class ClusterScanner:
                     )
 
         try:
+            request_time = Timestamp.now()
             result = await client.history_last_value(metric, timeout=60)
 
             if result is None:
@@ -321,7 +322,7 @@ class ClusterScanner:
                 type="no_value",
             )
 
-            age = Timestamp.now() - result.timestamp
+            age = request_time - result.timestamp
 
             # Archived metrics are supposed to not receive new data points.
             # For such metrics, the archived metadata is the ISO8601 string, when
