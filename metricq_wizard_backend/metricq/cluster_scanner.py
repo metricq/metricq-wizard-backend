@@ -171,11 +171,12 @@ class ClusterScanner:
             # only set first_detection_date when creating the report, not
             # on updates
             report["first_detection_date"] = (
-                str(Timestamp.now().datetime.astimezone()) if date is None else date
+                str(Timestamp.now().datetime.isoformat()
+                    ) if date is None else date
             )
 
         report["date"] = (
-            str(Timestamp.now().datetime.astimezone()) if date is None else date
+            str(Timestamp.now().datetime.isoformat()) if date is None else date
         )
 
         report["type"] = type
@@ -335,7 +336,7 @@ class ClusterScanner:
                     scope=metric,
                     type="dead",
                     severity="error",
-                    last_timestamp=str(result.timestamp.datetime.astimezone()),
+                    last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
                 )
                 # if the metric is dead, it can't be undead as well
@@ -352,7 +353,7 @@ class ClusterScanner:
                     scope=metric,
                     type="undead",
                     severity="warning",
-                    last_timestamp=str(result.timestamp.datetime.astimezone()),
+                    last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
                     archived=metadata.get("archived"),
                 )
@@ -407,7 +408,7 @@ class ClusterScanner:
         metric: str,
         metadata: JsonDict,
     ) -> None:
-        start_time = Timestamp.from_iso8601("1970-01-01T00:00:00.0Z")
+        start_time = Timestamp(0)
         end_time = Timestamp.from_now(Timedelta.from_string("7d"))
 
         try:
@@ -415,14 +416,15 @@ class ClusterScanner:
                 metric, start_time=start_time, end_time=end_time, timeout=60
             )
             if result.count and (
-                not math.isfinite(result.minimum) or not math.isfinite(result.maximum)
+                not math.isfinite(result.minimum) or not math.isfinite(
+                    result.maximum)
             ):
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
                     type="infinite",
                     severity="info",
-                    last_timestamp=str(result.timestamp.datetime.astimezone()),
+                    last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
                 )
             else:
