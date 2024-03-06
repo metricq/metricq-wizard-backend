@@ -17,6 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import asyncio
 import json
 import math
 from typing import Any
@@ -27,7 +28,7 @@ from aiohttp.web_response import Response, json_response
 from aiohttp.web_routedef import RouteTableDef
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfigurations
-from metricq_wizard_backend.metricq import Configurator
+from metricq_wizard_backend.metricq import ClusterScanner, Configurator
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
@@ -128,6 +129,15 @@ async def post_metrics_delete_metadata(request: Request):
 
     deleted_metrics = await client.delete_metadata(metrics)
 
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+    await asyncio.gather(
+        *[
+            scanner.delete_issue_reports(scope_type="metric", scope=metric)
+            for metric in deleted_metrics
+        ],
+        return_exceptions=True,
+    )
+
     if set(deleted_metrics) == set(metrics):
         return json_response(
             {
@@ -205,10 +215,17 @@ async def post_metrics_historic(request: Request):
 
     metrics: dict[metricq.Metric, bool] = data["metrics"]
 
-    if any([not isinstance(id, str) or not isinstance(value, bool) for id, value in metrics.items()]) or len(metrics) == 0:
+    if (
+        any(
+            [
+                not isinstance(id, str) or not isinstance(value, bool)
+                for id, value in metrics.items()
+            ]
+        )
+        or len(metrics) == 0
+    ):
         return json_response(
-            {"status": "error", "message": "Invalid metric dict in request"},
-            status=400
+            {"status": "error", "message": "Invalid metric dict in request"}, status=400
         )
 
     updated_metrics = await client.metrics_update_historic(metrics)
@@ -357,3 +374,13 @@ async def get_metric_consumers(request: Request):
     consumers = await configurator.fetch_consumers(metric=metric_id)
 
     return Response(text=json.dumps(consumers), content_type="application/json")
+
+
+@routes.get("/api/metric/{id}/issues")
+async def get_metric_issues(request: Request):
+    metric = request.match_info["id"]
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+
+    issues = await scanner.get_metric_issues(metric)
+
+    return json_response(issues)

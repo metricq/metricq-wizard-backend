@@ -109,9 +109,11 @@ class ClusterScanner:
 
     @property
     def running(self) -> bool:
+        assert self.lock is not None
         return self.lock.locked()
 
     async def run_once(self) -> None:
+        assert self.lock is not None
         if self.lock.locked():
             raise RuntimeError("Scan already running")
 
@@ -129,12 +131,20 @@ class ClusterScanner:
         # TODO add check for (db) queue bindings
         # TODO add check for token names
 
+        assert self.db_metadata is not None
+
         async with HistoryClient(self.token, self.url, add_uuid=True) as client:
             tasks = AsyncTaskPool(max_tasks=250)
 
             async for doc in self.db_metadata.docs():
                 metric = doc.id
                 metadata = doc.data
+
+                # this assert is purely for mypy. doc.data can only return None
+                # is the doc does not exist. Which it clearly does, as we only
+                # get existing documents from the docs iterator.
+                assert metadata is not None
+
                 await tasks.append(self.check_metric_metadata(metric, metadata))
 
                 if metadata.get("historic", False):
@@ -157,10 +167,11 @@ class ClusterScanner:
         type: str,
         scope_type: str,
         scope: str,
-        date: str = None,
-        severity: str = None,
+        date: str | None = None,
+        severity: str | None = None,
         **kwargs: Any,
     ):
+        assert self.db_issues is not None
         report = await self.db_issues.create(
             id=f"{type}-{scope_type}-{scope}", exists_ok=True
         )
@@ -195,10 +206,23 @@ class ClusterScanner:
         scope_type: str,
         scope: str,
     ):
+        assert self.db_issues is not None
+
         report = await self.db_issues.create(
             id=f"{type}-{scope_type}-{scope}", exists_ok=True
         )
         if report.exists:
+            await report.delete()
+
+    async def delete_issue_reports(self, scope_type: str, scope: str):
+        assert self.db_issues is not None
+
+        async for report in self.db_issues.find(
+            {
+                "scope": scope,
+                "scope_type": scope_type,
+            }
+        ):
             await report.delete()
 
     async def check_metric_metadata(self, metric, metadata):
@@ -448,6 +472,8 @@ class ClusterScanner:
             )
 
     async def check_metric_name(self, metric: str):
+        assert self.db_metadata is not None
+
         if not re.match(r"([a-zA-Z][a-zA-Z0-9_]+\.)+[a-zA-Z][a-zA-Z0-9_]+", metric):
             doc = await self.db_metadata.get(metric)
             await self.create_issue_report(
@@ -482,5 +508,14 @@ class ClusterScanner:
         )
         return {
             "totalRows": response.total_rows,
-            "rows": [doc.data for doc in response.docs()],
+            "rows": [doc.json for doc in response.docs()],
         }
+
+    async def get_metric_issues(self, metric):
+        assert self.db_issues is not None
+
+        issues = []
+        async for doc in self.db_issues.find({"scope_type": "metric", "scope": metric}):
+            issues.append(doc.data)
+
+        return {"issues": issues}
