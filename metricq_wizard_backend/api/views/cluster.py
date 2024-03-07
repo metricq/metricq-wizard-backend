@@ -41,10 +41,10 @@ async def get_client_list_filtered(request: Request):
 
 @routes.delete("/api/cluster/issues/{issue}")
 async def delete_issue(request: Request):
-    configurator: Configurator = request.app["metricq_client"]
+    scanner: ClusterScanner = request.app["cluster_scanner"]
     issue = request.match_info["issue"]
 
-    await configurator.delete_issue_report(*issue.split("-"))
+    await scanner.delete_issue_report(*issue.split("-"))
 
     return json_response(data={"status": "ok"})
 

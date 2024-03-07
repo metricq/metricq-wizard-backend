@@ -3,7 +3,7 @@ import math
 import re
 import traceback
 from contextlib import suppress
-from typing import Any, Coroutine
+from typing import Any, Coroutine, Literal
 
 from aiocouch import CouchDB, Database
 from metricq import HistoryClient, Timedelta, Timestamp
@@ -14,6 +14,18 @@ JsonDict = dict[str, Any]
 
 logger = get_logger()
 logger.setLevel("INFO")
+
+SeverityType = Literal["error"] | Literal["warning"] | Literal["info"]
+ScopeType = Literal["metric"]
+IssueType = (
+    Literal["dead"]
+    | Literal["undead"]
+    | Literal["no_value"]
+    | Literal["infinite"]
+    | Literal["invalid_name"]
+    | Literal["errored"]
+    | Literal["timeout"]
+)
 
 
 class AsyncTaskPool:
@@ -57,11 +69,20 @@ class AsyncTaskPool:
 
         # We don't stop on exceptions. We want all tasks to complete, be it
         # successful or not.
-        await asyncio.gather(*self.pending, return_exceptions=True)
+        results = await asyncio.gather(*self.pending, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error("Failed to complete health check task: ", result)
+                traceback.print_exception(result)
 
         assert all(task.done() for task in self.pending)
 
         self.pending = set()
+
+
+def issue_report_id(issue_type: IssueType, scope_type: ScopeType, scope: str) -> str:
+    return f"{issue_type}-{scope_type}-{scope}"
 
 
 class ClusterScanner:
@@ -83,11 +104,6 @@ class ClusterScanner:
         self.db_issues = await self.couch.create("issues", exists_ok=True)
 
         index = await self.db_issues.design_doc("sortedBy", exists_ok=True)
-        await index.create_view(
-            view="scope",
-            map_function="function (doc) {\n  emit(doc.scope_type + doc.scope, null);\n}",
-            exists_ok=True,
-        )
         await index.create_view(
             view="scope",
             map_function="function (doc) {\n  emit(doc.scope_type + doc.scope, null);\n}",
@@ -121,16 +137,12 @@ class ClusterScanner:
             logger.warn("Starting Cluster Health Scan")
             try:
                 await self._run_scan()
-            except Exception as e:
-                logger.error(f"Cluster Scan failed: {e}")
-                logger.error("".join(traceback.format_exception(e)))
+            except Exception:
+                logger.exception("Cluster Scan failed")
             finally:
                 logger.warn("Cluster Health Scan Finished")
 
     async def _run_scan(self) -> None:
-        # TODO add check for (db) queue bindings
-        # TODO add check for token names
-
         assert self.db_metadata is not None
 
         async with HistoryClient(self.token, self.url, add_uuid=True) as client:
@@ -141,7 +153,7 @@ class ClusterScanner:
                 metadata = doc.data
 
                 # this assert is purely for mypy. doc.data can only return None
-                # is the doc does not exist. Which it clearly does, as we only
+                # if the doc does not exist. It clearly exists, as we only
                 # get existing documents from the docs iterator.
                 assert metadata is not None
 
@@ -164,16 +176,17 @@ class ClusterScanner:
 
     async def create_issue_report(
         self,
-        type: str,
-        scope_type: str,
+        issue_type: IssueType,
+        scope_type: ScopeType,
         scope: str,
-        date: str | None = None,
-        severity: str | None = None,
+        date: Timestamp | None = None,
+        severity: SeverityType | None = None,
         **kwargs: Any,
     ):
         assert self.db_issues is not None
         report = await self.db_issues.create(
-            id=f"{type}-{scope_type}-{scope}", exists_ok=True
+            id=issue_report_id(issue_type, scope_type, scope),
+            exists_ok=True,
         )
 
         report["severity"] = "warning" if severity is None else severity
@@ -182,15 +195,18 @@ class ClusterScanner:
             # only set first_detection_date when creating the report, not
             # on updates
             report["first_detection_date"] = (
-                str(Timestamp.now().datetime.isoformat()
-                    ) if date is None else date
+                str(Timestamp.now().datetime.isoformat())
+                if date is None
+                else date.datetime.isoformat()
             )
 
         report["date"] = (
-            str(Timestamp.now().datetime.isoformat()) if date is None else date
+            str(Timestamp.now().datetime.isoformat())
+            if date is None
+            else date.datetime.isoformat()
         )
 
-        report["type"] = type
+        report["type"] = issue_type
         report["scope_type"] = scope_type
         report["scope"] = scope
 
@@ -202,19 +218,21 @@ class ClusterScanner:
 
     async def delete_issue_report(
         self,
-        type: str,
-        scope_type: str,
+        issue_type: IssueType,
+        scope_type: ScopeType,
         scope: str,
     ):
         assert self.db_issues is not None
 
         report = await self.db_issues.create(
-            id=f"{type}-{scope_type}-{scope}", exists_ok=True
+            id=issue_report_id(issue_type, scope_type, scope),
+            exists_ok=True,
         )
+
         if report.exists:
             await report.delete()
 
-    async def delete_issue_reports(self, scope_type: str, scope: str):
+    async def delete_issue_reports(self, scope_type: ScopeType, scope: str):
         assert self.db_issues is not None
 
         async for report in self.db_issues.find(
@@ -239,7 +257,7 @@ class ClusterScanner:
             await self.create_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="missing_historic",
+                issue_type="missing_historic",
                 severity="warning",
                 source=source,
             )
@@ -247,7 +265,7 @@ class ClusterScanner:
             await self.delete_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="missing_historic",
+                issue_type="missing_historic",
             )
 
         missing_metadata = []
@@ -280,7 +298,7 @@ class ClusterScanner:
             await self.create_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="missing_metadata",
+                issue_type="missing_metadata",
                 severity="error" if "source" in missing_metadata else "info",
                 source=source,
                 missing_metadata=missing_metadata,
@@ -334,7 +352,7 @@ class ClusterScanner:
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="no_value",
+                    issue_type="no_value",
                     severity="warning",
                     source=metadata.get("source"),
                 )
@@ -344,7 +362,7 @@ class ClusterScanner:
             await self.delete_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="no_value",
+                issue_type="no_value",
             )
 
             age = request_time - result.timestamp
@@ -358,7 +376,7 @@ class ClusterScanner:
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="dead",
+                    issue_type="dead",
                     severity="error",
                     last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
@@ -367,7 +385,7 @@ class ClusterScanner:
                 await self.delete_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="undead",
+                    issue_type="undead",
                 )
             elif age <= allowed_age and metadata.get("archived"):
                 # the metric is archived, but we recently received a new data point
@@ -375,7 +393,7 @@ class ClusterScanner:
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="undead",
+                    issue_type="undead",
                     severity="warning",
                     last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
@@ -385,26 +403,26 @@ class ClusterScanner:
                 await self.delete_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="dead",
+                    issue_type="dead",
                 )
             else:
                 # this is the happy case, everything's fine.
                 await self.delete_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="dead",
+                    issue_type="dead",
                 )
                 await self.delete_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="undead",
+                    issue_type="undead",
                 )
 
             # if we got here, the metric didn't time out. so remove those reports
             await self.delete_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="timeout",
+                issue_type="timeout",
             )
 
         except asyncio.TimeoutError:
@@ -413,14 +431,14 @@ class ClusterScanner:
                 scope_type="metric",
                 scope=metric,
                 severity="warning",
-                type="timeout",
+                issue_type="timeout",
                 source=metadata.get("source"),
             )
         except HistoryError as e:
             await self.create_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="errored",
+                issue_type="errored",
                 severity="info",
                 error=str(e),
                 source=metadata.get("source"),
@@ -440,13 +458,12 @@ class ClusterScanner:
                 metric, start_time=start_time, end_time=end_time, timeout=60
             )
             if result.count and (
-                not math.isfinite(result.minimum) or not math.isfinite(
-                    result.maximum)
+                not math.isfinite(result.minimum) or not math.isfinite(result.maximum)
             ):
                 await self.create_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="infinite",
+                    issue_type="infinite",
                     severity="info",
                     last_timestamp=str(result.timestamp.datetime.isoformat()),
                     source=metadata.get("source"),
@@ -455,7 +472,7 @@ class ClusterScanner:
                 await self.delete_issue_report(
                     scope_type="metric",
                     scope=metric,
-                    type="infinite",
+                    issue_type="infinite",
                 )
 
         except asyncio.TimeoutError:
@@ -465,7 +482,7 @@ class ClusterScanner:
             await self.create_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="errored",
+                issue_type="errored",
                 severity="info",
                 error=str(e),
                 source=metadata.get("source"),
@@ -479,7 +496,7 @@ class ClusterScanner:
             await self.create_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="invalid_name",
+                issue_type="invalid_name",
                 severity="info",
                 source=doc.get("source"),
             )
@@ -487,7 +504,7 @@ class ClusterScanner:
             await self.delete_issue_report(
                 scope_type="metric",
                 scope=metric,
-                type="invalid_name",
+                issue_type="invalid_name",
             )
 
     async def find_issues(self, currentPage, perPage, sortBy, sortDesc, **kwargs):
@@ -511,11 +528,14 @@ class ClusterScanner:
             "rows": [doc.json for doc in response.docs()],
         }
 
-    async def get_metric_issues(self, metric):
+    async def get_metric_issues(self, metric) -> list[JsonDict]:
         assert self.db_issues is not None
 
         issues = []
         async for doc in self.db_issues.find({"scope_type": "metric", "scope": metric}):
+            assert doc.data is not None
+            # again, this is only mypy. can't find a document that does not
+            # exist, hence doc.data can't be None
             issues.append(doc.data)
 
-        return {"issues": issues}
+        return issues

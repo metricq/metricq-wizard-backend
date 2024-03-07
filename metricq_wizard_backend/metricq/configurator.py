@@ -77,11 +77,11 @@ def measure(func):
 class Configurator(Client):
     def __init__(
         self,
-        token,
-        management_url,
-        couchdb_url,
-        rabbitmq_api_url,
-        rabbitmq_data_host,
+        token: str,
+        management_url: str,
+        couchdb_url: str,
+        rabbitmq_api_url: str,
+        rabbitmq_data_host: str,
     ):
         super().__init__(
             token,
@@ -93,14 +93,14 @@ class Configurator(Client):
         self.rabbitmq_api_url = rabbitmq_api_url
         self.rabbitmq_data_host = rabbitmq_data_host
 
-        self.couchdb_db_config: database.Database = None
-        self.couchdb_db_metadata: database.Database = None
-        self.couchdb_db_clients: database.Database = None
-        self.couchdb_db_issues: database.Database = None
+        self.couchdb_db_config: database.Database | None = None
+        self.couchdb_db_metadata: database.Database | None = None
+        self.couchdb_db_clients: database.Database | None = None
+        self.couchdb_db_issues: database.Database | None = None
 
         self.user_session_manager = UserSessionManager()
 
-        self._config_locks = {}
+        self._config_locks: dict[str, Lock] = {}
 
     async def connect(self):
         # First, connect to couchdb
@@ -139,6 +139,9 @@ class Configurator(Client):
 
     @cached(ttl=5 * 60, cache=SimpleMemoryCache)
     async def rabbitmq_bindings(self) -> rabbitmq.Bindings:
+        assert self.couchdb_db_config is not None
+        assert self.couchdb_db_clients is not None
+
         return await rabbitmq.fetch_bindings(
             api_url=self.rabbitmq_api_url,
             data_host=self.rabbitmq_data_host,
@@ -185,6 +188,8 @@ class Configurator(Client):
         # with the tuple (source, sink) as key
         connections: dict[tuple[str, str], int] = defaultdict(int)
 
+        assert self.couchdb_db_config is not None
+
         # grab all the "sources" from the database. We only use the
         # config database, because all "sources" have to have configs.
         clients = [client async for client in self.couchdb_db_config.akeys()]
@@ -219,6 +224,7 @@ class Configurator(Client):
         return (await self.couchdb_db_config[token]).data
 
     async def get_client_tokens(self) -> List[str]:
+        assert self.couchdb_db_config is not None
         return [
             id
             async for id in self.couchdb_db_config.all_docs.akeys()
@@ -232,6 +238,8 @@ class Configurator(Client):
         :param selector: regex for partial matching the metric name or sequence of possible metric names
         :return: a {token: config} dict
         """
+        assert self.couchdb_db_config is not None
+
         selector_dict = dict()
         if selector is not None:
             if isinstance(selector, str):
@@ -246,8 +254,7 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(
-                        selector)
+                    "Invalid selector type: {}, supported: str, list", type(selector)
                 )
 
         if selector_dict:
@@ -268,10 +275,8 @@ class Configurator(Client):
                 f"backup-{token}-{datetime.datetime.now().isoformat()}"
             )
 
-            backup_data = dict(config.data)
+            backup_data = config.json
             backup_data["x-metricq-id"] = token
-            if "_rev" in backup_data:
-                del backup_data["_rev"]
             backup.update(backup_data)
 
             await backup.save()
@@ -282,6 +287,7 @@ class Configurator(Client):
             )
 
     async def set_config(self, token: str, new_config: dict):
+        assert self.couchdb_db_config is not None
         arguments = {"token": token, "config": new_config}
         logger.debug(arguments)
 
@@ -304,12 +310,12 @@ class Configurator(Client):
     async def update_metric_database_config(
         self, metric_database_configurations: List[MetricDatabaseConfiguration]
     ):
-        configurations_by_database = {}
-        for config in metric_database_configurations:
-            config_list = configurations_by_database.get(
-                config.database_id, [])
-            config_list.append(config)
-            configurations_by_database[config.database_id] = config_list
+        configurations_by_database = defaultdict(list)
+        for db_config in metric_database_configurations:
+            configurations_by_database[db_config.database_id].append(db_config)
+
+        assert self.couchdb_db_config is not None
+        assert self.couchdb_db_metadata is not None
 
         for database_id in configurations_by_database.keys():
             async with self._get_config_lock(database_id):
@@ -328,8 +334,7 @@ class Configurator(Client):
 
                         if metadata:
                             if metadata.get("historic", False):
-                                logger.warn(
-                                    "Metric already in a database. Ignoring!")
+                                logger.warn("Metric already in a database. Ignoring!")
                             else:
                                 if (
                                     metric_database_configuration.id
@@ -365,6 +370,7 @@ class Configurator(Client):
     async def get_source_plugin(
         self, source_id, session_key: str
     ) -> Optional[SourcePlugin]:
+        assert self.couchdb_db_config is not None
         config = await self.couchdb_db_config[source_id]
         if "type" not in config:
             logger.error(f"No type for source {source_id} provided.")
@@ -391,7 +397,8 @@ class Configurator(Client):
 
         return session
 
-    async def get_session_state(self, session_key: str, source_id: str) -> bool:
+    async def get_session_state(self, session_key: str, source_id: str) -> bool | None:
+        assert self.couchdb_db_config is not None
         config = await self.couchdb_db_config[source_id]
         if "type" not in config:
             logger.error(f"No type for source {source_id} provided.")
@@ -424,6 +431,9 @@ class Configurator(Client):
             await config.save()
 
     async def delete_client(self, *, token: str) -> bool:
+        assert self.couchdb_db_config is not None
+        assert self.couchdb_db_clients is not None
+
         async with self._get_config_lock(token):
             # While `existed` seems to be equal to `client.exists or config.exists`
             # At return time, both do not exist anymore. Hence we keep it.
@@ -465,6 +475,7 @@ class Configurator(Client):
             timeout: int = 60,
             **kwargs: Any,
         ):
+            assert self._management_channel is not None
             await self._management_connection_watchdog.established()
             logger.debug(f"Routing key for rpc is {client_token}-rpc")
             return await super(Client, self).rpc(
@@ -493,12 +504,10 @@ class Configurator(Client):
             raise AttributeError("unknown format requested: {}".format(format))
 
         if infix is not None and prefix is not None:
-            raise AttributeError(
-                'cannot get_metrics with both "prefix" and "infix"')
+            raise AttributeError('cannot get_metrics with both "prefix" and "infix"')
 
         if source is not None and historic is not None:
-            raise AttributeError(
-                'cannot get_metrics with both "historic" and "source"')
+            raise AttributeError('cannot get_metrics with both "historic" and "source"')
 
         selector_dict = dict()
         if selector is not None:
@@ -514,8 +523,7 @@ class Configurator(Client):
                     selector_dict["_id"] = {"$in": selector}
             else:
                 raise TypeError(
-                    "Invalid selector type: {}, supported: str, list", type(
-                        selector)
+                    "Invalid selector type: {}, supported: str, list", type(selector)
                 )
         if historic is not None:
             if not isinstance(historic, bool):
@@ -547,8 +555,7 @@ class Configurator(Client):
             if infix is None:
                 request_prefix = prefix
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "index", "historic")
+                    endpoint = self.couchdb_db_metadata.view("index", "historic")
                 elif source is not None:
                     endpoint = self.couchdb_db_metadata.view("index", "source")
                     request_prefix = None
@@ -562,11 +569,9 @@ class Configurator(Client):
                 if limit is not None:
                     request_limit = 6 * limit
                 if historic:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "components", "historic")
+                    endpoint = self.couchdb_db_metadata.view("components", "historic")
                 else:
-                    endpoint = self.couchdb_db_metadata.view(
-                        "components", "all")
+                    endpoint = self.couchdb_db_metadata.view("components", "all")
 
             if format == "array":
                 metrics = [
@@ -597,8 +602,7 @@ class Configurator(Client):
         for transformer_metric in config.get("metrics", {}):
             if transformer_metric == metric:
                 config_hash = hashlib.sha256(
-                    json.dumps(config["metrics"]
-                               [transformer_metric]).encode("utf-8")
+                    json.dumps(config["metrics"][transformer_metric]).encode("utf-8")
                 ).hexdigest()
                 logger.info("JSON hash is {}", config_hash)
                 return {
@@ -612,6 +616,7 @@ class Configurator(Client):
     async def create_combined_metric(
         self, transformer_id: str, metric: str, expression: Dict
     ) -> bool:
+        assert self.couchdb_db_config
         async with self._get_config_lock(transformer_id):
             config = await self.couchdb_db_config[transformer_id]
 
@@ -631,6 +636,7 @@ class Configurator(Client):
     async def update_combined_metric_expression(
         self, transformer_id: str, metric: str, expression: Dict, config_hash: str
     ) -> bool:
+        assert self.couchdb_db_config is not None
         async with self._get_config_lock(transformer_id):
             config = await self.couchdb_db_config[transformer_id]
 
@@ -653,6 +659,7 @@ class Configurator(Client):
 
     async def discover(self) -> None:
         async def callback(from_token: str, **response):
+            assert self.couchdb_db_clients is not None
             client = await self.couchdb_db_clients.create(from_token, exists_ok=True)
 
             # sanitize against evil clients
@@ -778,8 +785,7 @@ class Configurator(Client):
 
             try:
                 if "archived" not in doc:
-                    doc["archived"] = str(
-                        metricq.Timestamp.now().datetime.astimezone())
+                    doc["archived"] = str(metricq.Timestamp.now().datetime.astimezone())
 
                     await doc.save()
 
@@ -798,7 +804,9 @@ class Configurator(Client):
         updated_ids = []
         # We don't want to raise an error if the metric doesn't exist, so we
         # use the `create` parameter.
-        async for doc in self.couchdb_db_metadata.docs(list(metrics.keys()), create=True):
+        async for doc in self.couchdb_db_metadata.docs(
+            list(metrics.keys()), create=True
+        ):
             if not doc.exists:
                 # if the document doesn't exist, we skip it.
                 # No actual document will be created on the server,

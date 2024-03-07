@@ -373,7 +373,7 @@ async def get_metric_consumers(request: Request):
 
     consumers = await configurator.fetch_consumers(metric=metric_id)
 
-    return Response(text=json.dumps(consumers), content_type="application/json")
+    return json_response(consumers)
 
 
 @routes.get("/api/metric/{id}/issues")
@@ -381,6 +381,4 @@ async def get_metric_issues(request: Request):
     metric = request.match_info["id"]
     scanner: ClusterScanner = request.app["cluster_scanner"]
 
-    issues = await scanner.get_metric_issues(metric)
-
-    return json_response(issues)
+    return json_response({"issues": await scanner.get_metric_issues(metric)})
