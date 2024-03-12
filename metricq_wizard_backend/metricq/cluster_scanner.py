@@ -355,6 +355,7 @@ class ClusterScanner:
         result = None
         has_timed_out = False
         has_errored = False
+        error_msg: str | None = None
 
         request_time = Timestamp.now()
 
@@ -445,6 +446,9 @@ class ClusterScanner:
         start_time = Timestamp(0)
         end_time = Timestamp.from_now(Timedelta.from_string("7d"))
 
+        has_errored = False
+        error_msg = None
+
         try:
             result = await client.history_aggregate(
                 metric,
@@ -462,22 +466,25 @@ class ClusterScanner:
             error_msg = str(e)
 
         await self.handle_issue_report(
-            not math.isfinite(result.minimum) or not math.isfinite(result.maximum),
-            scope_type="metric",
-            scope=metric,
-            issue_type="infinite",
-            severity="info",
-            last_timestamp=str(result.timestamp.datetime.isoformat()),
-            source=metadata.get("source"),
-        )
-
-        await self.handle_issue_report(
             has_errored,
             scope_type="metric",
             scope=metric,
             issue_type="errored",
             severity="info",
             error=str(error_msg),
+            source=metadata.get("source"),
+        )
+
+        if has_errored:
+            return
+
+        await self.handle_issue_report(
+            not math.isfinite(result.minimum) or not math.isfinite(result.maximum),
+            scope_type="metric",
+            scope=metric,
+            issue_type="infinite",
+            severity="info",
+            last_timestamp=str(result.timestamp.datetime.isoformat()),
             source=metadata.get("source"),
         )
 
