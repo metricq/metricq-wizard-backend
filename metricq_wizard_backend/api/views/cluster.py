@@ -21,11 +21,12 @@
 
 import asyncio
 
+from aiocouch import NotFoundError
 from aiohttp.web_request import Request
 from aiohttp.web_response import json_response
 from aiohttp.web_routedef import RouteTableDef
 
-from metricq_wizard_backend.metricq import Configurator, ClusterScanner
+from metricq_wizard_backend.metricq import ClusterScanner
 
 routes = RouteTableDef()
 
@@ -36,7 +37,14 @@ async def get_client_list_filtered(request: Request):
 
     ctx = await request.json()
 
-    return json_response(data=await scanner.find_issues(**ctx))
+    return json_response(
+        data=await scanner.find_issues(
+            page=ctx["currentPage"],
+            per_page=ctx["perPage"],
+            sorting_key=ctx["sortBy"],
+            descending=ctx["sortDesc"],
+        )
+    )
 
 
 @routes.delete("/api/cluster/issues/{issue}")
@@ -44,9 +52,11 @@ async def delete_issue(request: Request):
     scanner: ClusterScanner = request.app["cluster_scanner"]
     issue = request.match_info["issue"]
 
-    await scanner.delete_issue_report(*issue.split("-"))
-
-    return json_response(data={"status": "ok"})
+    try:
+        await scanner.delete_issue_report_by(issue)
+        return json_response(data={"status": "ok"})
+    except NotFoundError:
+        return json_response(data={"error": "report does not exist"}, status=400)
 
 
 @routes.post("/api/cluster/health_scan")
@@ -75,4 +85,4 @@ async def get_health_scan(request: Request):
     if scanner.running:
         status = "running"
 
-    return json_response(data={"status": status}, status=202)
+    return json_response(data={"status": status})

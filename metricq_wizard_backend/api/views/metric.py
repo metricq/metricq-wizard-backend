@@ -195,7 +195,7 @@ async def post_metrics_archive(request: Request):
                 "archived": archived_metrics,
                 "failed": list(set(metrics) - set(archived_metrics)),
             },
-            status=400,
+            status=500,
         )
 
 

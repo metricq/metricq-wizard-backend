@@ -3,9 +3,9 @@ import math
 import re
 import traceback
 from contextlib import suppress
-from typing import Any, Coroutine, Literal
+from typing import Any, Coroutine, Literal, cast
 
-from aiocouch import CouchDB, Database
+from aiocouch import CouchDB, Database, View
 from metricq import HistoryClient, Timedelta, Timestamp
 from metricq.exceptions import HistoryError
 from metricq.logging import get_logger
@@ -179,7 +179,6 @@ class ClusterScanner:
         issue_type: IssueType,
         scope_type: ScopeType,
         scope: str,
-        date: Timestamp | None = None,
         severity: SeverityType | None = None,
         **kwargs: Any,
     ):
@@ -194,17 +193,9 @@ class ClusterScanner:
         if "first_detection_date" not in report:
             # only set first_detection_date when creating the report, not
             # on updates
-            report["first_detection_date"] = (
-                str(Timestamp.now().datetime.isoformat())
-                if date is None
-                else date.datetime.isoformat()
-            )
+            report["first_detection_date"] = Timestamp.now().datetime.isoformat()
 
-        report["date"] = (
-            str(Timestamp.now().datetime.isoformat())
-            if date is None
-            else date.datetime.isoformat()
-        )
+        report["date"] = Timestamp.now().datetime.isoformat()
 
         report["type"] = issue_type
         report["scope_type"] = scope_type
@@ -222,6 +213,11 @@ class ClusterScanner:
         scope_type: ScopeType,
         scope: str,
     ):
+        # This function would better be named like this:
+        # make_sure_no_matching_error_report_exists() but that's too long for my
+        # taste. So yes, unlike delete_issue_reports() and delete_issue_report_by()
+        # this function should not error if we try to delete something that
+        # does not exists.
         assert self.db_issues is not None
 
         report = await self.db_issues.create(
@@ -231,6 +227,11 @@ class ClusterScanner:
 
         if report.exists:
             await report.delete()
+
+    async def delete_issue_report_by(self, id: str):
+        assert self.db_issues is not None
+        report = await self.db_issues.get(id)
+        await report.delete()
 
     async def delete_issue_reports(self, scope_type: ScopeType, scope: str):
         assert self.db_issues is not None
@@ -243,34 +244,45 @@ class ClusterScanner:
         ):
             await report.delete()
 
-    async def check_metric_metadata(self, metric, metadata):
-        try:
-            source = metadata["source"]
-        except KeyError:
-            source = None
+    async def handle_issue_report(
+        self,
+        create_condition: bool,
+        issue_type: IssueType,
+        scope_type: ScopeType,
+        scope: str,
+        severity: SeverityType | None = None,
+        **kwargs: Any,
+    ):
+        if create_condition:
+            await self.create_issue_report(
+                issue_type, scope_type, scope, severity, **kwargs
+            )
+        else:
+            await self.delete_issue_report(issue_type, scope_type, scope)
+
+    async def check_metric_metadata(self, metric: str, metadata: JsonDict):
+        source = metadata.get("source")
 
         # This check is extra from missing_metadata, because it is a bit
         # more important, but new. We want to enforce that every metric has
         # to be either historic or not historic, i.e. only live. Or in other
         # words, not setting it is not an option.
-        if "historic" not in metadata or not isinstance(metadata["historic"], bool):
-            await self.create_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="missing_historic",
-                severity="warning",
-                source=source,
-            )
-        else:
-            await self.delete_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="missing_historic",
-            )
+        await self.handle_issue_report(
+            "historic" not in metadata or not isinstance(metadata["historic"], bool),
+            scope_type="metric",
+            scope=metric,
+            issue_type="missing_historic",
+            severity="warning",
+            source=source,
+        )
 
         missing_metadata = []
 
-        if "rate" not in metadata or not isinstance(metadata["rate"], float):
+        if (
+            "rate" not in metadata
+            or not isinstance(metadata["rate"], float)
+            or metadata["rate"] <= 0
+        ):
             missing_metadata.append("rate")
 
         if (
@@ -294,26 +306,18 @@ class ClusterScanner:
         ):
             missing_metadata.append("source")
 
-        if missing_metadata:
-            await self.create_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="missing_metadata",
-                severity="error" if "source" in missing_metadata else "info",
-                source=source,
-                missing_metadata=missing_metadata,
-            )
-        else:
-            await self.delete_issue_report(
-                scope_type="metric",
-                scope=metric,
-                type="missing_metadata",
-            )
+        await self.handle_issue_report(
+            len(missing_metadata) > 0,
+            scope_type="metric",
+            scope=metric,
+            issue_type="missing_metadata",
+            severity="error" if "source" in missing_metadata else "info",
+            source=source,
+            missing_metadata=missing_metadata,
+        )
 
-    async def check_metric_is_dead(
-        self, client: HistoryClient, metric: str, metadata: JsonDict
-    ) -> None:
-        # TODO tolerance is rather high, because in prod, checks seem to
+    def _guess_allowed_age(self, metadata: JsonDict) -> Timedelta:
+        # We set the allowed_age rather high, because in prod, checks seem to
         # take a while, which messes up the timings :(
         allowed_age = Timedelta.from_string("1min")
         try:
@@ -343,106 +347,94 @@ class ClusterScanner:
                         metadata,
                     )
 
+        return allowed_age
+
+    async def check_metric_is_dead(
+        self, client: HistoryClient, metric: str, metadata: JsonDict
+    ) -> None:
+        result = None
+        has_timed_out = False
+        has_errored = False
+
+        request_time = Timestamp.now()
+
         try:
-            request_time = Timestamp.now()
             result = await client.history_last_value(metric, timeout=60)
-
-            if result is None:
-                # No data points stored yet. This is bad.
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="no_value",
-                    severity="warning",
-                    source=metadata.get("source"),
-                )
-                return
-
-            # we have a valid result, hence, there are stored data points.
-            await self.delete_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="no_value",
-            )
-
-            age = request_time - result.timestamp
-
-            # Archived metrics are supposed to not receive new data points.
-            # For such metrics, the archived metadata is the ISO8601 string, when
-            # the metric was archived.
-            if age > allowed_age and not metadata.get("archived"):
-                # We haven't received a new data point in a while and the metric
-                # wasn't archived => It's dead, Jimmy.
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="dead",
-                    severity="error",
-                    last_timestamp=str(result.timestamp.datetime.isoformat()),
-                    source=metadata.get("source"),
-                )
-                # if the metric is dead, it can't be undead as well
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="undead",
-                )
-            elif age <= allowed_age and metadata.get("archived"):
-                # the metric is archived, but we recently received a new data point
-                # => Zombies are here, back in my dayz, you'd reload your hatchet now.
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="undead",
-                    severity="warning",
-                    last_timestamp=str(result.timestamp.datetime.isoformat()),
-                    source=metadata.get("source"),
-                    archived=metadata.get("archived"),
-                )
-                # if the metric is undead, it can't be dead as well
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="dead",
-                )
-            else:
-                # this is the happy case, everything's fine.
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="dead",
-                )
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="undead",
-                )
-
-            # if we got here, the metric didn't time out. so remove those reports
-            await self.delete_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="timeout",
-            )
-
-        except asyncio.TimeoutError:
-            # this likely means that the bindings for this metric is borked
-            await self.create_issue_report(
-                scope_type="metric",
-                scope=metric,
-                severity="warning",
-                issue_type="timeout",
-                source=metadata.get("source"),
-            )
+        except TimeoutError:
+            has_timed_out = True
         except HistoryError as e:
-            await self.create_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="errored",
-                severity="info",
-                error=str(e),
-                source=metadata.get("source"),
-            )
+            has_errored = True
+            error_msg = str(e)
+
+        await self.handle_issue_report(
+            result is None,
+            scope_type="metric",
+            scope=metric,
+            issue_type="no_value",
+            severity="warning",
+            source=metadata.get("source"),
+        )
+
+        # a timeout likely means that the bindings for this metric is borked
+        await self.handle_issue_report(
+            has_timed_out,
+            scope_type="metric",
+            scope=metric,
+            severity="warning",
+            issue_type="timeout",
+            source=metadata.get("source"),
+        )
+
+        # an HistoryError is something in the Database, this sounds bad.
+        await self.handle_issue_report(
+            has_errored,
+            scope_type="metric",
+            scope=metric,
+            issue_type="errored",
+            severity="error",
+            error=str(error_msg),
+            source=metadata.get("source"),
+        )
+
+        if result is None or has_timed_out or has_errored:
+            return
+
+        age = request_time - result.timestamp
+
+        # Archived metrics are supposed to not receive new data points.
+        # For such metrics, the archived metadata is the ISO8601 string, when
+        # the metric was archived.
+
+        allowed_age = self._guess_allowed_age(metadata)
+        # We haven't received a new data point in a while and the metric
+        # wasn't archived => It's dead, Jim.
+        await self.handle_issue_report(
+            age > allowed_age and not metadata.get("archived"),
+            scope_type="metric",
+            scope=metric,
+            issue_type="dead",
+            severity="error",
+            last_timestamp=str(result.timestamp.datetime.isoformat()),
+            source=metadata.get("source"),
+        )
+
+        # the metric is archived, but we received a new data point since
+        # => Zombies are here, back in my dayz, you'd reload your hatchet now.
+        if "archived" in metadata:
+            archived_at = Timestamp.from_iso8601(metadata["archived"])
+        else:
+            archived_at = Timestamp.now()
+
+        await self.handle_issue_report(
+            bool(metadata.get("archived")) and archived_at < result.timestamp,
+            scope_type="metric",
+            scope=metric,
+            issue_type="undead",
+            severity="warning",
+            last_timestamp=str(result.timestamp.datetime.isoformat()),
+            source=metadata.get("source"),
+            archived=metadata.get("archived"),
+        )
 
     async def check_metric_for_infinites(
         self,
@@ -455,38 +447,39 @@ class ClusterScanner:
 
         try:
             result = await client.history_aggregate(
-                metric, start_time=start_time, end_time=end_time, timeout=60
+                metric,
+                start_time=start_time,
+                end_time=end_time,
+                timeout=60,
             )
-            if result.count and (
-                not math.isfinite(result.minimum) or not math.isfinite(result.maximum)
-            ):
-                await self.create_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="infinite",
-                    severity="info",
-                    last_timestamp=str(result.timestamp.datetime.isoformat()),
-                    source=metadata.get("source"),
-                )
-            else:
-                await self.delete_issue_report(
-                    scope_type="metric",
-                    scope=metric,
-                    issue_type="infinite",
-                )
 
         except asyncio.TimeoutError:
             # we should see this in the dead metrics check as well, so don't bother here.
             pass
         except HistoryError as e:
-            await self.create_issue_report(
-                scope_type="metric",
-                scope=metric,
-                issue_type="errored",
-                severity="info",
-                error=str(e),
-                source=metadata.get("source"),
-            )
+            # we may get a different error from the database though
+            has_errored = True
+            error_msg = str(e)
+
+        await self.handle_issue_report(
+            not math.isfinite(result.minimum) or not math.isfinite(result.maximum),
+            scope_type="metric",
+            scope=metric,
+            issue_type="infinite",
+            severity="info",
+            last_timestamp=str(result.timestamp.datetime.isoformat()),
+            source=metadata.get("source"),
+        )
+
+        await self.handle_issue_report(
+            has_errored,
+            scope_type="metric",
+            scope=metric,
+            issue_type="errored",
+            severity="info",
+            error=str(error_msg),
+            source=metadata.get("source"),
+        )
 
     async def check_metric_name(self, metric: str):
         assert self.db_metadata is not None
@@ -507,22 +500,27 @@ class ClusterScanner:
                 issue_type="invalid_name",
             )
 
-    async def find_issues(self, currentPage, perPage, sortBy, sortDesc, **kwargs):
-        skip = (currentPage - 1) * perPage
-        limit = perPage
+    async def find_issues(
+        self, page: int, per_page: int, sorting_key: str, descending: bool
+    ) -> JsonDict:
+        assert self.db_issues is not None
 
-        if sortBy == "id":
-            view = self.db_issues.all_docs
-        elif sortBy == "severity":
+        skip = (page - 1) * per_page
+        limit = per_page
+
+        if sorting_key == "id":
+            view = cast(View, self.db_issues.all_docs)
+        elif sorting_key == "severity":
             view = self.db_issues.view("sortedBy", "severity")
-        elif sortBy == "scope":
+        elif sorting_key == "scope":
             view = self.db_issues.view("sortedBy", "scope")
-        elif sortBy == "issue":
+        elif sorting_key == "issue":
             view = self.db_issues.view("sortedBy", "type")
 
         response = await view.get(
-            include_docs=True, limit=limit, skip=skip, descending=sortDesc
+            include_docs=True, limit=limit, skip=skip, descending=descending
         )
+
         return {
             "totalRows": response.total_rows,
             "rows": [doc.json for doc in response.docs()],
