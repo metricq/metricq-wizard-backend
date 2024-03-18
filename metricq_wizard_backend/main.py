@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
 from pathlib import Path
 
 import aiohttp_cors
@@ -30,7 +31,7 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from aiohttp_swagger import setup_swagger
 
 from . import api
-from .metricq import Configurator
+from .metricq import Configurator, ClusterScanner
 from .metricq.source_plugin import AddMetricItem, AvailableMetricItem, ConfigItem
 from .settings import Settings
 
@@ -46,14 +47,26 @@ async def startup(app: web.Application):
         settings.rabbitmq_api_url,
         settings.rabbitmq_data_host,
     )
+
+    cluster_scanner = ClusterScanner(
+        token=settings.token,
+        url=settings.rabbitmq_url,
+        couchdb=settings.couchdb_url,
+    )
     app["metricq_client"] = client
-    await client.connect()
+    app["cluster_scanner"] = cluster_scanner
+    await asyncio.gather(client.connect(),
+                         cluster_scanner.connect())
     return
 
 
 async def cleanup(app: web.Application):
     client: Configurator = app["metricq_client"]
     await client.stop()
+
+    cluster: ClusterScanner = app["cluster_scanner"]
+    await cluster.stop()
+
     return
 
 
@@ -69,7 +82,8 @@ async def create_app():
     app.on_cleanup.append(cleanup)
 
     aiohttp_session.setup(
-        app, EncryptedCookieStorage(settings.auth_key, cookie_name=settings.cookie_name)
+        app, EncryptedCookieStorage(
+            settings.auth_key, cookie_name=settings.cookie_name)
     )
 
     cors = aiohttp_cors.setup(

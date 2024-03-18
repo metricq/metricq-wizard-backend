@@ -17,6 +17,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with metricq-wizard.  If not, see <http://www.gnu.org/licenses/>.
+import asyncio
 import json
 import math
 from typing import Any
@@ -27,7 +28,7 @@ from aiohttp.web_response import Response, json_response
 from aiohttp.web_routedef import RouteTableDef
 
 from metricq_wizard_backend.api.models import MetricDatabaseConfigurations
-from metricq_wizard_backend.metricq import Configurator
+from metricq_wizard_backend.metricq import ClusterScanner, Configurator
 
 logger = metricq.get_logger()
 logger.setLevel("DEBUG")
@@ -112,7 +113,7 @@ async def post_metrics_delete_metadata(request: Request):
 
     if (
         not isinstance(data, dict)
-        or not "metrics" in data
+        or "metrics" not in data
         or not isinstance(data["metrics"], list)
     ):
         return json_response(
@@ -128,6 +129,15 @@ async def post_metrics_delete_metadata(request: Request):
 
     deleted_metrics = await client.delete_metadata(metrics)
 
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+    await asyncio.gather(
+        *[
+            scanner.delete_issue_reports(scope_type="metric", scope=metric)
+            for metric in deleted_metrics
+        ],
+        return_exceptions=True,
+    )
+
     if set(deleted_metrics) == set(metrics):
         return json_response(
             {
@@ -142,6 +152,98 @@ async def post_metrics_delete_metadata(request: Request):
                 "message": "Couldn't delete all metrics.",
                 "deleted": deleted_metrics,
                 "failed": list(set(metrics) - set(deleted_metrics)),
+            },
+            status=400,
+        )
+
+
+@routes.post("/api/metrics/archive")
+async def post_metrics_archive(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or "metrics" not in data
+        or not isinstance(data["metrics"], list)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: list[metricq.Metric] = data["metrics"]
+
+    if any([not isinstance(id, str) for id in metrics]) or len(metrics) == 0:
+        return json_response(
+            {"status": "error", "message": "Invalid metric list in request"}, status=400
+        )
+
+    archived_metrics = await client.archive_metrics(metrics)
+
+    if set(archived_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "archived": archived_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't delete all metrics.",
+                "archived": archived_metrics,
+                "failed": list(set(metrics) - set(archived_metrics)),
+            },
+            status=500,
+        )
+
+
+@routes.post("/api/metrics/historic")
+async def post_metrics_historic(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or "metrics" not in data
+        or not isinstance(data["metrics"], dict)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: dict[metricq.Metric, bool] = data["metrics"]
+
+    if (
+        any(
+            [
+                not isinstance(id, str) or not isinstance(value, bool)
+                for id, value in metrics.items()
+            ]
+        )
+        or len(metrics) == 0
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid metric dict in request"}, status=400
+        )
+
+    updated_metrics = await client.metrics_update_historic(metrics)
+
+    if set(updated_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "updated": updated_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't update all metrics.",
+                "updated": updated_metrics,
+                "failed": list(set(metrics) - set(updated_metrics)),
             },
             status=400,
         )
@@ -271,4 +373,12 @@ async def get_metric_consumers(request: Request):
 
     consumers = await configurator.fetch_consumers(metric=metric_id)
 
-    return Response(text=json.dumps(consumers), content_type="application/json")
+    return json_response(consumers)
+
+
+@routes.get("/api/metric/{id}/issues")
+async def get_metric_issues(request: Request):
+    metric = request.match_info["id"]
+    scanner: ClusterScanner = request.app["cluster_scanner"]
+
+    return json_response({"issues": await scanner.get_metric_issues(metric)})
