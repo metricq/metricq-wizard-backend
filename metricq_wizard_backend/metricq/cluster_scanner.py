@@ -25,6 +25,8 @@ IssueType = (
     | Literal["invalid_name"]
     | Literal["errored"]
     | Literal["timeout"]
+    | Literal["missing_historic"]
+    | Literal["missing_metadata"]
 )
 
 
@@ -357,18 +359,27 @@ class ClusterScanner:
         has_errored = False
         error_msg: str | None = None
 
-        request_time = Timestamp.now()
+        request_time: Timestamp | None = None
 
         try:
             result = await client.history_last_value(metric, timeout=60)
+
+            # In a perfect world, this time would be taken *before* the request
+            # However, we live in the real world where the actual request might
+            # get preempted before it get's send. Hence we ran into a lot of
+            # false positives, driven by the high load during these checks.
+            # However, let's assume that the time after the actual request
+            # finishes until the return is small.
+            request_time = Timestamp.now()
         except TimeoutError:
             has_timed_out = True
         except HistoryError as e:
             has_errored = True
             error_msg = str(e)
 
+        # I'm not sure how this could happen, but here we are.
         await self.handle_issue_report(
-            result is None,
+            result is None and request_time is not None,
             scope_type="metric",
             scope=metric,
             issue_type="no_value",
@@ -397,7 +408,9 @@ class ClusterScanner:
             source=metadata.get("source"),
         )
 
-        if result is None or has_timed_out or has_errored:
+        # if anything went wrong until here, we first push the issue reports,
+        # but now it's time to go.
+        if request_time is None or result is None or has_timed_out or has_errored:
             return
 
         age = request_time - result.timestamp
