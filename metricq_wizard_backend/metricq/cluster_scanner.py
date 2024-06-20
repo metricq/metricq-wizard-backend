@@ -360,6 +360,7 @@ class ClusterScanner:
         error_msg: str | None = None
 
         request_time: Timestamp | None = None
+        request_start_time = Timestamp.now()
 
         try:
             result = await client.history_last_value(metric, timeout=60)
@@ -419,7 +420,15 @@ class ClusterScanner:
         # For such metrics, the archived metadata is the ISO8601 string, when
         # the metric was archived.
 
-        allowed_age = self._guess_allowed_age(metadata)
+        # We add the time our request took to the allowed_age, since we can't
+        # tell where the request might have gotten stuck. We may not catch
+        # metrics, which failed just shy before the check or whose that have
+        # a slightly different rate than expected, but I guess we can live with
+        # that. The alternative is a lot of false positives.
+        allowed_age = self._guess_allowed_age(metadata) + (
+            request_start_time - request_time
+        )
+
         # We haven't received a new data point in a while and the metric
         # wasn't archived => It's dead, Jim.
         await self.handle_issue_report(
