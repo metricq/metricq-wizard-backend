@@ -27,6 +27,7 @@ IssueType = (
     | Literal["timeout"]
     | Literal["missing_historic"]
     | Literal["missing_metadata"]
+    | Literal["serious_clock_error"]
 )
 
 
@@ -359,6 +360,11 @@ class ClusterScanner:
         has_errored = False
         error_msg: str | None = None
 
+        # You want to know how any of this works? Bad news buddy, that makes
+        # us two. However, it's complicated and I bashed my head at the wall 
+        # several times already. The high load in asyncio, couchdb and the
+        # db-hta during a scan makes this impossible to predict and debug.
+
         request_end_time: Timestamp | None = None
         request_start_time = Timestamp.now()
 
@@ -407,28 +413,33 @@ class ClusterScanner:
         if request_end_time is None or result is None or has_timed_out or has_errored:
             return
 
-        age = request_end_time - result.timestamp
-
         # Archived metrics are supposed to not receive new data points.
         # For such metrics, the archived metadata is the ISO8601 string, when
         # the metric was archived.
 
-        # We add the time our request took to the allowed_age, since we can't
-        # tell where the request might have gotten stuck. We may not catch
-        # metrics, which failed just shy before the check or whose that have
-        # a slightly different rate than expected, but I guess we can live with
-        # that. The alternative is a lot of false positives.
-        allowed_age = self._guess_allowed_age(metadata) + (
-            request_end_time - request_start_time
-        )
+        allowed_age = self._guess_allowed_age(metadata)
 
         # We haven't received a new data point in a while and the metric
         # wasn't archived => It's dead, Jim.
         await self.handle_issue_report(
-            age > allowed_age and not metadata.get("archived"),
+            request_start_time - allowed_age >= result.timestamp
+            and not metadata.get("archived"),
             scope_type="metric",
             scope=metric,
             issue_type="dead",
+            severity="error",
+            last_timestamp=str(result.timestamp.datetime.isoformat()),
+            source=metadata.get("source"),
+        )
+
+        # The timestamp of the record is after our request has finished?
+        # Well dude, you got real problems with time sync there. Good luck.
+        # Hopefully, this does not hit me. T__T
+        await self.handle_issue_report(
+            result.timestamp >= request_end_time and not metadata.get("archived"),
+            scope_type="metric",
+            scope=metric,
+            issue_type="serious_clock_error",
             severity="error",
             last_timestamp=str(result.timestamp.datetime.isoformat()),
             source=metadata.get("source"),
