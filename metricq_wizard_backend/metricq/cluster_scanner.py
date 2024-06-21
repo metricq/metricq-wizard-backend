@@ -359,19 +359,12 @@ class ClusterScanner:
         has_errored = False
         error_msg: str | None = None
 
-        request_time: Timestamp | None = None
+        request_end_time: Timestamp | None = None
         request_start_time = Timestamp.now()
 
         try:
             result = await client.history_last_value(metric, timeout=60)
-
-            # In a perfect world, this time would be taken *before* the request
-            # However, we live in the real world where the actual request might
-            # get preempted before it get's send. Hence we ran into a lot of
-            # false positives, driven by the high load during these checks.
-            # However, let's assume that the time after the actual request
-            # finishes until the return is small.
-            request_time = Timestamp.now()
+            request_end_time = Timestamp.now()
         except TimeoutError:
             has_timed_out = True
         except HistoryError as e:
@@ -380,7 +373,7 @@ class ClusterScanner:
 
         # I'm not sure how this could happen, but here we are.
         await self.handle_issue_report(
-            result is None and request_time is not None,
+            result is None and request_end_time is not None,
             scope_type="metric",
             scope=metric,
             issue_type="no_value",
@@ -411,10 +404,10 @@ class ClusterScanner:
 
         # if anything went wrong until here, we first push the issue reports,
         # but now it's time to go.
-        if request_time is None or result is None or has_timed_out or has_errored:
+        if request_end_time is None or result is None or has_timed_out or has_errored:
             return
 
-        age = request_time - result.timestamp
+        age = request_end_time - result.timestamp
 
         # Archived metrics are supposed to not receive new data points.
         # For such metrics, the archived metadata is the ISO8601 string, when
@@ -426,7 +419,7 @@ class ClusterScanner:
         # a slightly different rate than expected, but I guess we can live with
         # that. The alternative is a lot of false positives.
         allowed_age = self._guess_allowed_age(metadata) + (
-            request_start_time - request_time
+            request_end_time - request_start_time
         )
 
         # We haven't received a new data point in a while and the metric
