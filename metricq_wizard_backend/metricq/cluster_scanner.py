@@ -89,10 +89,12 @@ def issue_report_id(issue_type: IssueType, scope_type: ScopeType, scope: str) ->
 
 
 class ClusterScanner:
-    def __init__(self, token: str, url: str, couchdb: str):
+    def __init__(self, token: str, url: str, couchdb: str, ignore_patterns: list[str]):
         self.token = token
         self.url = url
         self.couch: CouchDB = CouchDB(couchdb)
+
+        self.ignore_patterns = [re.compile(pattern) for pattern in ignore_patterns]
 
         self.db_issues: Database | None = None
         self.db_metadata: Database | None = None
@@ -256,7 +258,12 @@ class ClusterScanner:
         severity: SeverityType | None = None,
         **kwargs: Any,
     ):
-        if create_condition:
+        ignored = False
+
+        if scope_type == "metric":
+            ignored = any(pattern.fullmatch(scope) for pattern in self.ignore_patterns)
+
+        if create_condition and not ignored:
             await self.create_issue_report(
                 issue_type, scope_type, scope, severity, **kwargs
             )
@@ -361,7 +368,7 @@ class ClusterScanner:
         error_msg: str | None = None
 
         # You want to know how any of this works? Bad news buddy, that makes
-        # us two. However, it's complicated and I bashed my head at the wall 
+        # us two. However, it's complicated and I bashed my head at the wall
         # several times already. The high load in asyncio, couchdb and the
         # db-hta during a scan makes this impossible to predict and debug.
 

@@ -52,11 +52,11 @@ async def startup(app: web.Application):
         token=settings.token,
         url=settings.rabbitmq_url,
         couchdb=settings.couchdb_url,
+        ignore_patterns=settings.metric_scanner_ignore_patterns,
     )
     app["metricq_client"] = client
     app["cluster_scanner"] = cluster_scanner
-    await asyncio.gather(client.connect(),
-                         cluster_scanner.connect())
+    await asyncio.gather(client.connect(), cluster_scanner.connect())
     return
 
 
@@ -82,8 +82,7 @@ async def create_app():
     app.on_cleanup.append(cleanup)
 
     aiohttp_session.setup(
-        app, EncryptedCookieStorage(
-            settings.auth_key, cookie_name=settings.cookie_name)
+        app, EncryptedCookieStorage(settings.auth_key, cookie_name=settings.cookie_name)
     )
 
     cors = aiohttp_cors.setup(

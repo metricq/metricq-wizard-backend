@@ -61,9 +61,12 @@ class UserSession:
                 )
                 self._source_config_revision[source_id] = source_config.get("_rev")
                 self._source_plugin_creation_time[source_id] = Timestamp.now()
-                self._source_plugin_initial_configured_metrics[source_id] = self._source_plugins[source_id].get_configured_metrics()
+                self._source_plugin_initial_configured_metrics[source_id] = (
+                    self._source_plugins[source_id].get_configured_metrics()
+                )
                 logger.debug(
-                    f"Currently configured metrics: {self._source_plugin_initial_configured_metrics[source_id]}")
+                    f"Currently configured metrics: {self._source_plugin_initial_configured_metrics[source_id]}"
+                )
             else:
                 logger.error(
                     f"Plugin {full_module_name} for source {source_id} not found."

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     rabbitmq_api_url: AnyHttpUrl = "http://admin:admin@localhost:15672"
     rabbitmq_data_host: str = "/"
     dry_run = False
+    metric_scanner_ignore_patterns: list[str] = []
 
     class Config:
         env_file = ".env"
