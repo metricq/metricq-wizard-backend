@@ -800,6 +800,38 @@ class Configurator(Client):
 
         return archived_ids
 
+    async def hide_metrics(self, metrics: dict[str, bool]) -> list[str]:
+        hid_ids = []
+        assert self.couchdb_db_metadata is not None
+        # We don't want to raise an error if the metric doesn't exist, so we
+        # use the `create` parameter.
+        async for doc in self.couchdb_db_metadata.docs(list(metrics.keys()), create=True):
+            if not doc.exists:
+                # if the document doesn't exist, we skip it.
+                # No actual document will be created on the server,
+                # as save() was never called.
+                continue
+
+            try:
+                if metrics[doc.id]:
+                    doc["hidden"] = True
+                else:
+                    del doc["hidden"]
+
+                await doc.save()
+
+                # saving did work, so we can add id to the list
+                hid_ids.append(doc.id)
+            except ConflictError as e:
+                # if the saving didn't work, we simply skip the error.
+                # On a logical side, this error means that the metric was declared
+                # while we try to update it, or someone else hit delete,
+                # archive, or hide as well. let the frontend deal with it.
+                print(e)
+                pass
+
+        return hid_ids
+
     async def metrics_update_historic(self, metrics: dict[str, bool]) -> list[str]:
         updated_ids = []
         # We don't want to raise an error if the metric doesn't exist, so we

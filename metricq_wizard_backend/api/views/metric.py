@@ -191,9 +191,51 @@ async def post_metrics_archive(request: Request):
         return json_response(
             {
                 "status": "partial",
-                "message": "Couldn't delete all metrics.",
+                "message": "Couldn't archive all metrics.",
                 "archived": archived_metrics,
                 "failed": list(set(metrics) - set(archived_metrics)),
+            },
+            status=500,
+        )
+
+
+@routes.post("/api/metrics/hide")
+async def post_metrics_hide(request: Request):
+    client: Configurator = request.app["metricq_client"]
+    data: dict[str, Any] = await request.json()
+
+    if (
+        not isinstance(data, dict)
+        or "metrics" not in data
+        or not isinstance(data["metrics"], dict)
+    ):
+        return json_response(
+            {"status": "error", "message": "Invalid request data"}, status=400
+        )
+
+    metrics: dict[metricq.Metric, bool] = data["metrics"]
+
+    if any([not isinstance(id, str) for id in metrics]) or len(metrics) == 0:
+        return json_response(
+            {"status": "error", "message": "Invalid metric list in request"}, status=400
+        )
+
+    hid_metrics = await client.hide_metrics(metrics)
+
+    if set(hid_metrics) == set(metrics):
+        return json_response(
+            {
+                "status": "ok",
+                "hidden": hid_metrics,
+            }
+        )
+    else:
+        return json_response(
+            {
+                "status": "partial",
+                "message": "Couldn't update all metrics.",
+                "hidden": hid_metrics,
+                "failed": list(set(metrics) - set(hid_metrics)),
             },
             status=500,
         )
