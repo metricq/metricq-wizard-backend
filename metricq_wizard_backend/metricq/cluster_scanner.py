@@ -150,6 +150,8 @@ class ClusterScanner:
     async def _run_scan(self) -> None:
         assert self.db_metadata is not None
 
+        start_time = Timestamp.now()
+
         async with HistoryClient(self.token, self.url, add_uuid=True) as client:
             tasks = AsyncTaskPool(max_tasks=250)
 
@@ -167,7 +169,7 @@ class ClusterScanner:
                 if metadata.get("historic", False):
                     # Only check the db status for historic metrics
                     await tasks.append(
-                        self.check_metric_is_dead(client, metric, metadata)
+                        self.check_metric_is_dead(client, metric, metadata, start_time)
                     )
                     await tasks.append(
                         self.check_metric_for_infinites(client, metric, metadata)
@@ -360,7 +362,11 @@ class ClusterScanner:
         return allowed_age
 
     async def check_metric_is_dead(
-        self, client: HistoryClient, metric: str, metadata: JsonDict
+        self,
+        client: HistoryClient,
+        metric: str,
+        metadata: JsonDict,
+        start_time: Timestamp,
     ) -> None:
         result = None
         has_timed_out = False
@@ -371,9 +377,12 @@ class ClusterScanner:
         # us two. However, it's complicated and I bashed my head at the wall
         # several times already. The high load in asyncio, couchdb and the
         # db-hta during a scan makes this impossible to predict and debug.
+        # For now, I think that the databases are so overworked during a scan,
+        # that they do not store live values properly. Hence, we can only look
+        # at the global start time of all requests, which is the start_time
+        # parameter. If this does not help, I am out of ideas :C
 
         request_end_time: Timestamp | None = None
-        request_start_time = Timestamp.now()
 
         try:
             result = await client.history_last_value(metric, timeout=60)
@@ -429,7 +438,7 @@ class ClusterScanner:
         # We haven't received a new data point in a while and the metric
         # wasn't archived => It's dead, Jim.
         await self.handle_issue_report(
-            request_start_time - allowed_age >= result.timestamp
+            start_time - allowed_age >= result.timestamp
             and not metadata.get("archived"),
             scope_type="metric",
             scope=metric,
